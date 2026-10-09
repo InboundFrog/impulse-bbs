@@ -13,6 +13,7 @@ const USER_LEN: usize = 843;
 const BOARD_LEN: usize = 256;
 const UBOARD_LEN: usize = 237;
 const ULF_LEN: usize = 146;
+const VERB_LEN: usize = 20 * 51;
 const MIX_LEN: usize = 27;
 const MHEAD_LEN: usize = 333;
 
@@ -198,7 +199,8 @@ fn fbase(b: &[u8]) -> (FBase, String, bool) {
     (f, dir, stat & 4 != 0)
 }
 
-fn file_rec(b: &[u8], size_of: impl Fn(&str) -> Option<u64>) -> FileRec {
+/// `verbose` is VERBOSE.DAT: 20 x string[50] per record, indexed by vpointer.
+fn file_rec(b: &[u8], size_of: impl Fn(&str) -> Option<u64>, verbose: &[u8]) -> FileRec {
     let mut r = R { b, p: 0 };
     let name = r.s(12);
     let desc = r.s(60);
@@ -209,13 +211,24 @@ fn file_rec(b: &[u8], size_of: impl Fn(&str) -> Option<u64>) -> FileRec {
     let owner_num = r.i16().max(0) as usize;
     let owner = r.s(36);
     let d = date(&r.s(8));
-    r.skip(2 + 4);
+    r.skip(2);
+    let vp = r.i32();
+    let ext = match usize::try_from(vp).ok().and_then(|i| verbose.get(i * VERB_LEN..(i + 1) * VERB_LEN)) {
+        Some(v) => {
+            let mut v: Vec<String> = v.chunks(51).map(|c| R { b: c, p: 0 }.s(50)).collect();
+            while v.last().is_some_and(|l| l.is_empty()) {
+                v.pop();
+            }
+            v
+        }
+        None => Vec::new(),
+    };
     let unvalidated = r.u8() & 1 != 0;
     r.skip(1);
     r.s(8);
     debug_assert_eq!(r.p, ULF_LEN);
     let size = size_of(&name).unwrap_or(blocks * 128);
-    FileRec { name, desc, ext: Vec::new(), points, downloads, size, owner, owner_num, date: d, unvalidated }
+    FileRec { name, desc, ext, points, downloads, size, owner, owner_num, date: d, unvalidated }
 }
 
 /// Packed date/time (TIMEJUNK.PAS dt2pdt) -> "YYYY-MM-DD HH:MM".
@@ -331,12 +344,13 @@ pub fn run(dir: &Path, cfg_path: &str) -> Result<String, String> {
         out.push(format!("{} file bases", cfg.fbases.len()));
     }
     let mut files = 0;
+    let verbose = find_near(dir, "VERBOSE.DAT").and_then(|p| std::fs::read(p).ok()).unwrap_or_default();
     for (f, name, in_dl) in &dirs {
         let found = if *in_dl { find_ci(&f.dl_path, name) } else { None }.or_else(|| find_ci(dir, name));
         let Some(b) = found.and_then(|p| std::fs::read(p).ok()) else { continue };
         let size_of = |n: &str| find_ci(&f.dl_path, n).and_then(|p| p.metadata().ok()).map(|m| m.len());
         // record 0 is a header
-        let v: Vec<FileRec> = records(&b, ULF_LEN).skip(1).map(|r| file_rec(r, size_of)).filter(|r| !r.name.is_empty()).collect();
+        let v: Vec<FileRec> = records(&b, ULF_LEN).skip(1).map(|r| file_rec(r, size_of, &verbose)).filter(|r| !r.name.is_empty()).collect();
         files += v.len();
         db.put_files(&f.file, &v).map_err(|e| e.to_string())?;
     }
