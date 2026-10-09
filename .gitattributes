@@ -1,0 +1,5 @@
+# DOS-era menus and screens keep their CRLF line endings
+*.MNU -text
+*.mnu -text
+*.ANS -text
+*.ASC -text
