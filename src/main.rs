@@ -10,6 +10,7 @@ mod files;
 mod menu;
 mod misc;
 mod msgs;
+mod multinode;
 mod nuv;
 mod session;
 mod sysop;

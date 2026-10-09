@@ -215,6 +215,10 @@ pub struct Online {
     pub unum: usize,
     /// Set when the SysOp edits this user; the session reloads the record.
     pub reload: bool,
+    /// Node messages and chat lines waiting to be shown.
+    pub inbox: Vec<String>,
+    /// Multinode chat forum this node is in, 0 = none.
+    pub forum: u8,
 }
 
 pub struct Db {

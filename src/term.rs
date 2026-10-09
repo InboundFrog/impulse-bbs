@@ -66,6 +66,23 @@ impl Term {
         }
     }
 
+    /// Wait up to `wait` for input; true if a key (or telnet data) is ready.
+    pub fn key_ready(&mut self, wait: Duration) -> io::Result<bool> {
+        self.flush()?;
+        if !self.stuffed.is_empty() {
+            return Ok(true);
+        }
+        self.s.set_read_timeout(Some(wait))?;
+        let r = self.s.peek(&mut [0]);
+        self.s.set_read_timeout(Some(self.idle))?;
+        match r {
+            Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
+            Ok(_) => Ok(true),
+            Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut | io::ErrorKind::Interrupted) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
     /// Next key from the caller, with telnet negotiation stripped.
     /// Enter (CR, CR LF, CR NUL or bare LF) always comes back as '\r'.
     pub fn getkey(&mut self) -> io::Result<char> {

@@ -145,6 +145,8 @@ impl Session {
             ('B', 'L') => self.batch_list()?,
             ('B', 'R') => self.batch_remove()?,
             ('B', 'U') => self.upload()?,
+            ('N', 'C') => self.multi_chat(data)?,
+            ('N', 'S') => self.node_message()?,
             ('N', 'W') => self.whos_online()?,
             ('%', _) => {
                 if !self.check_sysop_pw()? {

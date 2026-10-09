@@ -803,7 +803,7 @@ impl Session {
             };
             db.sys.last_callers.insert(0, lc);
             db.sys.last_callers.truncate(10);
-            db.online.insert(self.node, Online { name: self.user.name.clone(), doing: "Logging on".into(), unum: self.unum, reload: false });
+            db.online.insert(self.node, Online { name: self.user.name.clone(), doing: "Logging on".into(), unum: self.unum, ..Online::default() });
         }
         self.save_user();
         self.log("Logon");
@@ -943,6 +943,7 @@ impl Session {
 
     fn menu_prompt(&mut self) -> io::Result<String> {
         self.check_reload();
+        self.show_node_msgs()?;
         let every: Vec<Command> = self.menu.cmds.iter().filter(|c| c.keys == "EVERYTIME").cloned().collect();
         for c in every {
             if self.acs(&c.acs) {
