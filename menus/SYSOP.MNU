@@ -1,0 +1,204 @@
+|U4SysOp Menu
+
+
+SYSOP
+
+|NL|U4SysOp|U2: |U3
+s255
+
+MAIN
+0
+3
+9
+0
+1
+
+|U2[|U3U|U2] User Editor
+
+0
+0
+U
+
+%U
+
+
+|U2[|U3B|U2] Message Base Editor
+
+0
+0
+B
+
+%B
+
+
+|U2[|U3F|U2] File Base Editor
+
+0
+0
+F
+
+%F
+
+
+|U2[|U3E|U2] Conference Editor
+
+0
+0
+E
+
+CE
+
+
+|U2[|U3S|U2] System Configuration
+
+0
+0
+S
+
+%S
+
+
+|U2[|U3#|U2] Menu Editor
+
+0
+0
+#
+
+%#
+
+
+|U2[|U3C|U2] Become Another User
+
+0
+0
+C
+
+%C
+
+
+|U2[|U3L|U2] SysOp Log
+
+0
+0
+L
+
+%L
+
+
+|U2[|U3Z|U2] Daily Statistics
+
+0
+0
+Z
+
+%Z
+
+
+|U2[|U3D|U2] Mini-DOS
+
+0
+0
+D
+
+%D
+
+
+|U2[|U3R|U2] Read All Mail
+
+0
+0
+R
+
+%3
+
+
+|U2[|U31|U2] Edit Files
+
+0
+0
+1
+
+%1
+
+
+|U2[|U32|U2] Sort Files
+
+0
+0
+2
+
+%2
+
+
+|U2[|U34|U2] Download Any File
+
+0
+0
+4
+
+%4
+
+
+|U2[|U35|U2] Move a File
+
+0
+0
+5
+
+%5
+
+
+|U2[|U36|U2] Add All Files in Base
+
+0
+0
+6
+
+%6
+
+
+|U2[|U37|U2] Validate Files
+
+0
+0
+7
+
+%7
+
+
+|U2[|U38|U2] Add GIF Specs
+
+0
+0
+8
+
+%8
+
+
+|U2[|U39|U2] Pack Message Bases
+
+0
+0
+9
+
+%9
+
+
+|U2[|U3M|U2] Mass Mail
+
+0
+0
+M
+
+ML
+
+
+|U2[|U3X|U2] Quit to Main
+
+0
+0
+X
+
+-\
+
+

@@ -472,6 +472,8 @@ impl Session {
             "FT" | "NF" => self.sh.db().sys.zlog().uploads.to_string(),
             "LC" => self.sh.db().sys.last_callers.get(usize::from(self.unum > 0)).map(|l| l.name.clone()).unwrap_or_default(),
             "CM" => cfg.boards.get(self.board).map(|b| b.name.clone()).unwrap_or_default(),
+            // ponytail: CF (current file base) is ours; 7.1 had no such code
+            "CF" => cfg.fbases.get(self.fbase).map(|b| b.name.clone()).unwrap_or_default(),
             "NM" => strip_pipes(&self.menu.title[0]),
             "NN" => self.node.to_string(),
             "SP" => "TELNET".into(),

@@ -14,7 +14,7 @@ MAIN
 1
 
 |U2[|U3R|U2] Read Messages
-|U2[|U3R|U2] Read Messages
+
 0
 0
 R
@@ -23,7 +23,7 @@ MS
 
 
 |U2[|U3P|U2] Post a Message
-|U2[|U3P|U2] Post a Message
+
 0
 0
 P
@@ -32,7 +32,7 @@ MP
 
 
 |U2[|U3N|U2] New Scan
-|U2[|U3N|U2] New Scan
+
 0
 0
 N
@@ -41,7 +41,7 @@ MN
 
 
 |U2[|U3A|U2] Change Base
-|U2[|U3A|U2] Change Base
+
 0
 0
 A
@@ -50,7 +50,7 @@ MA
 
 
 |U2[|U3]|U2] Next Base
-|U2[|U3]|U2] Next Base
+
 0
 0
 ]
@@ -59,7 +59,7 @@ MA
 +
 
 |U2[|U3[|U2] Previous Base
-|U2[|U3[|U2] Previous Base
+
 0
 0
 [
@@ -67,8 +67,98 @@ MA
 MA
 -
 
+|U2[|U3C|U2] Change Conference
+
+0
+0
+C
+
+CM
+
+
+|U2[|U3Z|U2] Newscan Setup
+
+0
+0
+Z
+
+MZ
+
+
+|U2[|U3$|U2] Base Statistics
+
+0
+0
+$
+
+M$
+
+
+|U2[|U3E|U2] Send E-mail
+
+0
+0
+E
+
+ME
+
+
+|U2[|U3M|U2] Read E-mail
+
+0
+0
+M
+
+MM
+
+
+|U2[|U3K|U2] Delete All Your Mail
+
+0
+0
+K
+
+MK
+
+
+|U2[|U3J|U2] Delete Your Posts
+
+0
+0
+J
+
+MJ
+
+
+|U2[|U3Q|U2] Download QWK Packet
+
+0
+0
+Q
+
+MQ
+
+
+|U2[|U3U|U2] Upload REP Packet
+
+0
+0
+U
+
+MR
+
+
+|U2[|U3L|U2] Mass Mail
+
+0
+0
+L
+s255
+ML
+
+
 |U2[|U3#|U2] Base by Number
-|U2[|U3#|U2] Base by Number
+
 0
 0
 #
@@ -76,11 +166,11 @@ MA
 M#
 
 H
-|U2[|U3Q|U2] Quit to Main
-|U2[|U3Q|U2] Quit to Main
+|U2[|U3X|U2] Quit to Main
+
 0
 0
-Q
+X
 
 -\
 

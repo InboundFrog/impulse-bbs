@@ -1,0 +1,222 @@
+|U4File Menu
+
+
+FILE
+
+|NL|U2[|U3|CF|U2] |U4Files|U2: |U3
+
+
+MAIN
+0
+3
+9
+0
+1
+
+|U2[|U3L|U2] List Files
+
+0
+0
+L
+
+FL
+
+
+|U2[|U3A|U2] Change Base
+
+0
+0
+A
+
+FA
+
+
+|U2[|U3]|U2] Next Base
+
+0
+0
+]
+
+FA
++
+
+|U2[|U3[|U2] Previous Base
+
+0
+0
+[
+
+FA
+-
+
+|U2[|U3N|U2] New Files
+
+0
+0
+N
+
+FN
+
+
+|U2[|U3S|U2] Search Filenames
+
+0
+0
+S
+
+FS
+
+
+|U2[|U3F|U2] Find Text
+
+0
+0
+F
+
+FF
+
+
+|U2[|U3P|U2] Set Newscan Date
+
+0
+0
+P
+
+FP
+
+
+|U2[|U3D|U2] Download
+
+0
+0
+D
+
+FD
+
+
+|U2[|U3U|U2] Upload
+
+0
+0
+U
+
+FU
+
+
+|U2[|U3V|U2] View Archive
+
+0
+0
+V
+
+FV
+
+
+|U2[|U3R|U2] Remove a File
+
+0
+0
+R
+
+FR
+
+
+|U2[|U3Y|U2] Your Transfer Stats
+
+0
+0
+Y
+
+FY
+
+
+|U2[|U3K|U2] File List Fields
+
+0
+0
+K
+
+FK
+
+
+|U2[|U3Z|U2] Newscan Setup
+
+0
+0
+Z
+
+FZ
+
+
+|U2[|U3C|U2] Change Conference
+
+0
+0
+C
+
+CF
+
+
+|U2[|U3/L|U2] List Batch
+
+0
+0
+/L
+
+BL
+
+
+|U2[|U3/R|U2] Remove from Batch
+
+0
+0
+/R
+
+BR
+
+
+|U2[|U3/C|U2] Clear Batch
+
+0
+0
+/C
+
+BC
+
+
+|U2[|U3/D|U2] Download Batch
+
+0
+0
+/D
+
+BD
+
+
+|U2[|U3/U|U2] Upload Batch
+
+0
+0
+/U
+
+BU
+
+
+|U2[|U3#|U2] Base by Number
+
+0
+0
+#
+
+F#
+
+H
+|U2[|U3X|U2] Quit to Main
+
+0
+0
+X
+
+-\
+
+
