@@ -19,6 +19,7 @@ mod script;
 mod session;
 mod sysop;
 mod term;
+mod wfc;
 
 use session::Shared;
 use std::net::TcpListener;
@@ -42,13 +43,14 @@ fn main() {
     println!("Impulse v{} - {} - listening on {}", env!("CARGO_PKG_VERSION"), cfg.bbs_name, cfg.listen);
     let sh = Arc::new(Shared { cfg: RwLock::new(Arc::new(cfg)), cfg_path: path, db: Mutex::new(db) });
     events::spawn(sh.clone());
+    wfc::spawn(sh.clone());
     for stream in listener.incoming().flatten() {
         // Claim the lowest free node number, as MULTINOD.PAS assigns nodes.
         let node = {
             let mut db = sh.db();
             let node = (1..=sh.cfg().max_nodes).find(|n| !db.online.contains_key(n));
             if let Some(n) = node {
-                db.online.insert(n, db::Online { name: "Logging in".into(), doing: "Logon".into(), ..Default::default() });
+                db.online.insert(n, db::Online { name: "Logging in".into(), doing: "Logon".into(), sock: stream.try_clone().ok(), ..Default::default() });
             }
             node
         };

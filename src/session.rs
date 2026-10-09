@@ -2,7 +2,7 @@
 //! input, logon (LOGON1/2.PAS, NEWUSERS.PAS) and the menu loop (IMP.PAS, MENUS.PAS).
 
 use crate::config::Config;
-use crate::db::{self, Db, LastCaller, Online, User};
+use crate::db::{self, Db, LastCaller, User};
 use crate::menu::{self, Command, Menu};
 use crate::term::{self, Term};
 use crate::{acs, events};
@@ -884,7 +884,8 @@ impl Session {
             let lc = LastCaller { caller_num: db.sys.callers, name: self.user.name.clone(), city_state: self.user.city_state.clone(), when: now() };
             db.sys.last_callers.insert(0, lc);
             db.sys.last_callers.truncate(10);
-            db.online.insert(self.node, Online { name: self.user.name.clone(), doing: "Logging on".into(), unum: self.unum, ..Online::default() });
+            let o = db.online.entry(self.node).or_default();
+            (o.name, o.doing, o.unum) = (self.user.name.clone(), "Logging on".into(), self.unum);
         }
         self.save_user();
         self.log("Logon");

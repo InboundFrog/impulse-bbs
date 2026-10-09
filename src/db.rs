@@ -222,6 +222,8 @@ pub struct Online {
     pub inbox: Vec<String>,
     /// Multinode chat forum this node is in, 0 = none.
     pub forum: u8,
+    /// The caller's socket, so the console can hang them up.
+    pub sock: Option<std::net::TcpStream>,
 }
 
 pub struct Db {
