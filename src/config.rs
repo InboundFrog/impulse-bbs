@@ -28,6 +28,14 @@ pub struct Config {
     /// Asked before every `%` SysOp command when set (checkpw).
     pub sysop_password: String,
     pub max_message_lines: usize,
+    /// Message SysOps: validate, move, extract and make messages permanent.
+    pub msop_acs: String,
+    /// See who posted anonymously, in public and in e-mail.
+    pub anon_pub_read: String,
+    pub anon_priv_read: String,
+    /// Post anonymously on any base, and send anonymous e-mail.
+    pub anon_pub_post: String,
+    pub anon_priv_post: String,
     /// Most minutes a user may keep in the time bank (0 disables it).
     pub max_time_bank: i64,
     /// Bulletin files are `<prefix><n>` (BULLETIN lists them).
@@ -42,14 +50,32 @@ pub struct Config {
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(default)]
 pub struct Board {
     pub name: String,
     /// Storage name: `<data_path>/msgs/<file>.json`.
     pub file: String,
-    #[serde(default)]
     pub acs: String,
-    #[serde(default)]
     pub post_acs: String,
+    /// Needed to use pipe colour/MCI codes in posts.
+    pub mci_acs: String,
+    /// Oldest messages are dropped past this many (0 = no limit).
+    pub max_msgs: usize,
+    pub anonymous: Anon,
+    pub password: String,
+    /// Posts are made under real names.
+    pub real_names: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Anon {
+    #[default]
+    No,
+    Yes,
+    Forced,
+    DearAbby,
+    AnyName,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -68,6 +94,13 @@ pub struct Strings {
     pub bulletin_line: String,
     pub time_bank_deposit: String,
     pub time_bank_withdraw: String,
+    pub post_anon: String,
+    /// Message reader prompt when there's no READP menu (scanmessage).
+    pub read_prompt: String,
+    /// E-mail reader prompt when there's no EMAILP menu.
+    pub mail_prompt: String,
+    pub delete_read_mail: String,
+    pub post_here: String,
 }
 
 impl Default for Config {
@@ -98,7 +131,12 @@ impl Default for Config {
             auto_dsl: 50,
             auto_ar: String::new(),
             auto_ac: String::new(),
-            boards: vec![Board { name: "General".into(), file: "general".into(), acs: String::new(), post_acs: "s20".into() }],
+            msop_acs: "s250".into(),
+            anon_pub_read: "s250".into(),
+            anon_priv_read: "s250".into(),
+            anon_pub_post: "s250".into(),
+            anon_priv_post: "s250".into(),
+            boards: vec![Board { name: "General".into(), file: "general".into(), post_acs: "s20".into(), ..Board::default() }],
             strings: Strings::default(),
         }
     }
@@ -120,6 +158,11 @@ impl Default for Strings {
             bulletin_line: "|NL|U1Bulletin to read |U2(|U3?|U2=list, |U3Q|U2=quit)|U1: |U3".into(),
             time_bank_deposit: "|NL|U1Deposit how many minutes? |U3".into(),
             time_bank_withdraw: "|NL|U1Withdraw how many minutes? |U3".into(),
+            post_anon: "|U1Post anonymously? ".into(),
+            read_prompt: "|NL|U1Read |U2(|U3?|U2=help)|U1: |U3".into(),
+            mail_prompt: "|NL|U1Mail |U2(|U3?|U2=help)|U1: |U3".into(),
+            delete_read_mail: "|U1Delete this letter? ".into(),
+            post_here: "|NL|U1Post a message on this base? ".into(),
         }
     }
 }

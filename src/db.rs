@@ -57,6 +57,8 @@ pub struct User {
     pub last_board: usize,
     /// Highest message id read, per board file.
     pub last_read: BTreeMap<String, u64>,
+    /// Board files left out of newscans (mzscan).
+    pub no_scan: Vec<String>,
 }
 
 impl Default for User {
@@ -99,6 +101,7 @@ impl Default for User {
             deleted: false,
             last_board: 0,
             last_read: BTreeMap::new(),
+            no_scan: Vec::new(),
         }
     }
 }
@@ -154,7 +157,8 @@ impl SysState {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(default)]
 pub struct Msg {
     pub id: u64,
     pub from: String,
@@ -165,6 +169,16 @@ pub struct Msg {
     pub subject: String,
     pub date: String,
     pub body: Vec<String>,
+    /// 0 no, 1 anonymous, 2 anonymous SysOp, 3 "Abby", 4 "Problemed Person",
+    /// 5 posted under `alias` (fromi.anon).
+    pub anon: u8,
+    pub alias: String,
+    /// Id of the message this answers.
+    pub reply_to: u64,
+    /// Kept by max-message pruning and can't be deleted (mipermanent).
+    pub permanent: bool,
+    /// Hidden from users until a message SysOp validates it (miunvalidated).
+    pub unvalidated: bool,
 }
 
 #[derive(Default)]
@@ -233,13 +247,28 @@ impl Db {
         load(&self.msg_path(file))
     }
 
-    pub fn post(&mut self, file: &str, mut m: Msg) -> io::Result<()> {
+    /// Add a message, then drop the oldest non-permanent ones past `max` (0 = no limit).
+    pub fn post(&mut self, file: &str, mut m: Msg, max: usize) -> io::Result<()> {
         self.sys.next_msg_id += 1;
         m.id = self.sys.next_msg_id;
         let mut v = self.msgs(file)?;
         v.push(m);
+        while max > 0 && v.len() > max {
+            match v.iter().position(|m| !m.permanent) {
+                Some(i) => v.remove(i),
+                None => break,
+            };
+        }
         store(&self.msg_path(file), &v)?;
         self.save()
+    }
+
+    pub fn update_msg(&mut self, file: &str, id: u64, f: impl FnOnce(&mut Msg)) -> io::Result<()> {
+        let mut v = self.msgs(file)?;
+        if let Some(m) = v.iter_mut().find(|m| m.id == id) {
+            f(m);
+        }
+        store(&self.msg_path(file), &v)
     }
 
     pub fn delete_msg(&mut self, file: &str, id: u64) -> io::Result<()> {

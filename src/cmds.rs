@@ -10,6 +10,8 @@ impl Session {
         let (c1, c2) = (k.next().unwrap_or(' '), k.next().unwrap_or(' '));
         match (c1, c2) {
             ('-', '^' | '/' | '\\') => return self.change_menu(c2, data),
+            // prompt menus (readp/emailp/filep): hand the key back to the reader
+            ('@' | '$' | '!', _) => self.pkey = Some(c2),
             ('-', 'F') => {
                 self.printf(data)?;
             }
@@ -105,6 +107,11 @@ impl Session {
             ('M', 'N') => self.newscan()?,
             ('M', 'E') => self.send_email(data)?,
             ('M', 'M') => self.read_mail()?,
+            ('M', 'L') => self.mass_mail()?,
+            ('M', 'J') => self.purge_posts()?,
+            ('M', 'K') => self.purge_mail()?,
+            ('M', 'Z') => self.newscan_boards()?,
+            ('M', '$') => self.board_stats()?,
             ('M', '#') => self.sprint("|NL|U1Enter the number of the message base to change to it.")?,
             ('N', 'W') => self.whos_online()?,
             ('%', _) => {
@@ -286,7 +293,7 @@ impl Session {
             return self.sprint("|NL|12You are restricted from writing automessages.");
         }
         self.printf("AUTOWRT")?;
-        let Some(body) = self.editor(30)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
+        let Some(body) = self.editor(30, None)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
         let anon = self.pynq("|U1Post anonymously? ", false)?;
         let mut lines = vec![if anon { format!("@{}", self.user.name) } else { self.user.name.clone() }];
         lines.extend(body);

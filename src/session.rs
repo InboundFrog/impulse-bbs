@@ -67,12 +67,16 @@ pub struct Session {
     pub menu_name: String,
     menu_stack: Vec<String>,
     pub board: usize,
+    /// Board files whose password was given this call.
+    pub board_pw: Vec<String>,
     /// `%XX` template variables (sysMciSet).
     pub vars: HashMap<String, String>,
     /// Header text for the `HDR` display file (`-W`, `%HS`).
     pub hdr: String,
     /// Inside a display file: `%XX` MCI codes are live (showscr).
     pct: bool,
+    /// Key handed back by a `@x`/`$x`/`!x` command in a prompt menu (readpmnu).
+    pub pkey: Option<char>,
     help: bool,
     on_since: Instant,
     lines: u16,
@@ -140,6 +144,8 @@ pub fn run(sh: Arc<Shared>, stream: TcpStream, node: usize) {
         vars: HashMap::new(),
         hdr: String::new(),
         pct: false,
+        pkey: None,
+        board_pw: Vec::new(),
         help: false,
         on_since: Instant::now(),
         lines: 0,
@@ -233,7 +239,11 @@ impl Session {
     // ---- ACS --------------------------------------------------------------
 
     pub fn acs(&self, s: &str) -> bool {
-        let u = &self.user;
+        self.acs_for(&self.user, self.unum, s)
+    }
+
+    /// ACS check against another user (aacs1).
+    pub fn acs_for(&self, u: &User, unum: usize, s: &str) -> bool {
         let now = Local::now();
         let cfg = self.cfg();
         acs::eval(s, &mut |c, arg| {
@@ -250,7 +260,7 @@ impl Session {
                 'R' => u.ac.contains(ch),
                 'S' => u.sl as i64 >= n,
                 'T' => self.time_left_min() >= n,
-                'U' => self.unum as i64 == n,
+                'U' => unum as i64 == n,
                 'V' => u.sl > cfg.new_sl || u.dsl > cfg.new_dsl,
                 'W' => now.weekday().num_days_from_sunday() as i64 == n,
                 'Y' => (now.hour() * 60 + now.minute()) as i64 >= n,
@@ -1011,6 +1021,38 @@ impl Session {
                 }
             }
         }
+    }
+
+    /// Prompt through a READP/EMAILP/FILEP-style menu whose `@x`, `$x` and `!x`
+    /// commands hand a key back (mainmenuhandle + readpmnu). Without the menu
+    /// file a one-key prompt over `keys` stands in. Enter means 'N'.
+    pub fn sub_prompt(&mut self, menu: &str, prompt: &str, keys: &str) -> io::Result<char> {
+        let Some(m) = self.load_menu(menu) else {
+            self.sprompt(prompt)?;
+            let c = self.onek(&format!("{keys}\r"))?;
+            return Ok(if c == '\r' { 'N' } else { c });
+        };
+        let old_menu = std::mem::replace(&mut self.menu, m);
+        let old_name = std::mem::replace(&mut self.menu_name, menu.to_uppercase());
+        self.pkey = None;
+        let r = self.sub_loop();
+        self.menu = old_menu;
+        self.menu_name = old_name;
+        r?;
+        Ok(self.pkey.take().unwrap_or('Q'))
+    }
+
+    fn sub_loop(&mut self) -> io::Result<()> {
+        while self.pkey.is_none() {
+            self.check_time()?;
+            let cmd = self.menu_prompt()?;
+            if cmd.is_empty() && !self.menu.cmds.iter().any(|c| c.keys == "ENTER") {
+                self.pkey = Some('N');
+            } else {
+                self.exec(&cmd)?;
+            }
+        }
+        Ok(())
     }
 
     /// Run every accessible command bound to `keys` (domenuexec).
