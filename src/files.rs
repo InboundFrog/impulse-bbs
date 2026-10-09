@@ -581,7 +581,7 @@ impl Session {
         let line = cmd.replace("%F", &list.join(" "));
         self.log(&format!("Transfer: {line}"));
         self.sprint("|NL|U1Start your transfer now. |U2(Ctrl-X several times aborts)")?;
-        let st = self.t.run_external(Command::new("sh").arg("-c").arg(&line).current_dir(cwd));
+        let st = self.t.run_external(Command::new("sh").arg("-c").arg(&line).current_dir(cwd), false);
         match st {
             Ok(s) => Ok(s.success()),
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => Err(e),

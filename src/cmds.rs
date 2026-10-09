@@ -122,6 +122,8 @@ impl Session {
             ('M', 'Z') => self.newscan_boards()?,
             ('M', '$') => self.board_stats()?,
             ('M', '#') => self.sprint("|NL|U1Enter the number of the message base to change to it.")?,
+            ('D', 'C' | 'D' | 'G' | 'S' | 'W' | '-') => self.door(c2, data)?,
+            ('I', 'D') => self.door('I', data)?,
             ('F', 'A') => self.change_fbase(data)?,
             ('F', 'L') => self.list_cur(data)?,
             ('F', 'S') => self.search_names(data)?,

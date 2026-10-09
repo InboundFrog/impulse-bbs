@@ -4,6 +4,7 @@ mod acs;
 mod cmds;
 mod config;
 mod db;
+mod doors;
 mod edit;
 mod files;
 mod menu;

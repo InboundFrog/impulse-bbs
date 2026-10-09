@@ -99,7 +99,8 @@ impl Term {
 impl Term {
     /// Run `cmd` with stdin/stdout joined to the caller, telnet-escaped both
     /// ways (transfer protocols and doors; the FOSSIL handoff in EXEC.PAS).
-    pub fn run_external(&mut self, cmd: &mut Command) -> io::Result<ExitStatus> {
+    /// `text` turns the caller's Enter (CR, CR LF, CR NUL) into LF for doors.
+    pub fn run_external(&mut self, cmd: &mut Command, text: bool) -> io::Result<ExitStatus> {
         // WILL/DO BINARY so 8-bit transfers survive the client.
         self.buf.extend_from_slice(&[IAC, 251, 0, IAC, 253, 0]);
         self.flush()?;
@@ -109,14 +110,15 @@ impl Term {
         let mut sock = self.s.try_clone()?;
         let pump = std::thread::spawn(move || {
             let mut b = [0u8; 4096];
+            let mut last = 0;
             while let Ok(n @ 1..) = cout.read(&mut b) {
-                if sock.write_all(&escape_iac(&b[..n])).is_err() {
+                if sock.write_all(&escape_out(&b[..n], text, &mut last)).is_err() {
                     break;
                 }
             }
         });
         self.s.set_read_timeout(Some(Duration::from_millis(100)))?;
-        let mut state = Unescape::default();
+        let mut state = Unescape { text, ..Unescape::default() };
         let mut b = [0u8; 4096];
         let r = loop {
             if let Some(st) = child.try_wait()? {
@@ -149,9 +151,14 @@ impl Term {
     }
 }
 
-fn escape_iac(b: &[u8]) -> Vec<u8> {
+/// Double IACs; in text mode also turn bare LF into CR LF.
+fn escape_out(b: &[u8], text: bool, last: &mut u8) -> Vec<u8> {
     let mut v = Vec::with_capacity(b.len());
     for &x in b {
+        if text && x == b'\n' && *last != b'\r' {
+            v.push(b'\r');
+        }
+        *last = x;
         v.push(x);
         if x == IAC {
             v.push(IAC);
@@ -165,6 +172,8 @@ fn escape_iac(b: &[u8]) -> Vec<u8> {
 struct Unescape {
     /// 0 data, 1 after IAC, 2 option byte to skip, 3 in SB, 4 IAC inside SB.
     st: u8,
+    text: bool,
+    after_cr: bool,
 }
 
 impl Unescape {
@@ -173,6 +182,15 @@ impl Unescape {
         for &x in b {
             self.st = match (self.st, x) {
                 (0, IAC) => 1,
+                (0, _) if self.text => {
+                    match x {
+                        b'\n' | 0 if self.after_cr => {}
+                        b'\r' => v.push(b'\n'),
+                        _ => v.push(x),
+                    }
+                    self.after_cr = x == b'\r';
+                    0
+                }
                 (0, _) => {
                     v.push(x);
                     0
@@ -223,11 +241,15 @@ mod tests {
 
     #[test]
     fn telnet_escaping() {
-        assert_eq!(super::escape_iac(&[1, 255, 2]), [1, 255, 255, 2]);
+        assert_eq!(super::escape_out(&[1, 255, 2, 10], false, &mut 0), [1, 255, 255, 2, 10]);
+        assert_eq!(super::escape_out(b"a\nb\r\n", true, &mut 0), b"a\r\nb\r\n");
         let mut u = super::Unescape::default();
         // IAC IAC -> 255, IAC WILL x dropped, SB ... SE dropped, split across feeds
         assert_eq!(u.feed(&[1, 255, 255, 2, 255, 251]), [1, 255, 2]);
         assert_eq!(u.feed(&[0, 3, 255, 250, 24, 0, 255, 240, 4]), [3, 4]);
+        let mut t = super::Unescape { text: true, ..Default::default() };
+        assert_eq!(t.feed(b"a\r\nb\r\0c\r"), b"a\nb\nc\n");
+        assert_eq!(t.feed(b"\nd"), b"d");
     }
 
     #[test]

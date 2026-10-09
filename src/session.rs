@@ -237,6 +237,10 @@ impl Session {
         self.unum > 0 && self.acs(&self.cfg().sysop_acs)
     }
 
+    pub fn on_since_secs(&self) -> u64 {
+        self.on_since.elapsed().as_secs()
+    }
+
     pub fn time_left_min(&self) -> i64 {
         self.user.minutes_today - (self.on_since.elapsed().as_secs() / 60) as i64
     }
@@ -1125,7 +1129,7 @@ impl Session {
 }
 
 /// Age in years from MM/DD/YYYY, 0 if unparseable.
-fn age(bday: &str) -> i64 {
+pub fn age(bday: &str) -> i64 {
     let Ok(b) = NaiveDate::parse_from_str(bday, "%m/%d/%Y") else { return 0 };
     let t = Local::now().date_naive();
     let mut a = t.year() - b.year();
