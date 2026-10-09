@@ -487,19 +487,44 @@ impl Session {
         if !p.exists() {
             return self.sprint("|12File is not available.");
         }
-        let lower = f.name.to_lowercase();
-        // ponytail: zip via unzip(1) only; LZH/ARJ viewers (LZHVIEW.PAS) not ported
-        if !lower.ends_with(".zip") {
+        let Some(v) = std::fs::read(&p).ok().and_then(|b| crate::arcview::list(&b)) else {
             return self.sprint("|U1Can't view the inside of that kind of file.");
+        };
+        // ponytail: one template set (ZIPVIEW.*, Z-codes) for every archive type; no CRC/attr (Z7/Z8)
+        self.vars.insert("ZN".into(), f.name.clone());
+        if !self.printf("zipview.top")? {
+            self.sprint("|NL|U4 Length  Method      Size  Ratio   Date     Time   Name|NL|U4------- -------- ------- ------ -------- ------ ------------")?;
         }
-        let out = Command::new("unzip").arg("-l").arg(&p).output();
-        let Ok(out) = out else { return self.sprint("|12unzip is not available.") };
-        self.nl()?;
-        for l in String::from_utf8_lossy(&out.stdout).lines() {
-            self.out(l)?;
-            self.nl()?;
+        let (mut tu, mut tc) = (0u64, 0u64);
+        for (i, e) in v.iter().enumerate() {
+            let (d, t) = crate::arcview::dos_dt(e.dos);
+            let pct = if e.size == 0 { 0 } else { 100 - (u64::from(e.csize) * 100 / u64::from(e.size)).min(100) };
+            tu += u64::from(e.size);
+            tc += u64::from(e.csize);
+            let row = [
+                ("Z1", format!("{:>7}", e.size)),
+                ("Z2", format!("{:>8}", e.method)),
+                ("Z3", format!("{:>8}", e.csize)),
+                ("Z4", format!("{pct:>4}%")),
+                ("Z5", d),
+                ("Z6", t),
+                ("Z9", format!("{:<13}", e.name)),
+                ("ZT", format!("{tu:>7}")),
+                ("ZC", format!("{tc:>7}")),
+                ("ZF", (i + 1).to_string()),
+            ];
+            for (k, val) in row {
+                self.vars.insert(k.into(), val);
+            }
+            if !self.printf("zipview.mid")? {
+                let r = |k: &str| self.vars[k].clone();
+                let line = format!("|U3{} |U1{} {} {}  {} {} |U3{}", r("Z1"), r("Z2"), r("Z3"), r("Z4"), r("Z5"), r("Z6"), r("Z9"));
+                self.sprint(&line)?;
+            }
         }
-        Ok(())
+        let r = if self.printf("zipview.bot")? { Ok(()) } else { self.sprint(&format!("|U4{tu:>7}          {tc:>8}       {} file(s)", v.len())) };
+        self.vars.clear();
+        r
     }
 
     pub fn view_cmd(&mut self) -> io::Result<()> {

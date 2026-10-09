@@ -14,7 +14,7 @@ Use a terminal that renders CP437 + ANSI (SyncTERM, NetRunner, or
 untouched, so original `.ANS` art displays as intended.
 
 External tools, when present: `sz`/`rz` (lrzsz) for the default transfer
-protocols, `zip`/`unzip` for QWK packets, archive viewing, FILE_ID.DIZ and
+protocols, `zip`/`unzip` for QWK packets, FILE_ID.DIZ and
 upload checks.
 
 ## What carries over from Impulse
@@ -30,6 +30,7 @@ upload checks.
 | `USER.LST`, message bases, `*.DIR` file lists        | `data/*.json`, `db.rs`        |
 | `MAIL*.PAS` messages and e-mail, `CONF.PAS`          | `msgs.rs`                     |
 | `FILE*.PAS` file bases, transfers, batch, `ULCHECK`  | `files.rs`                    |
+| `ZIPVIEWU.PAS`, `LZHVIEW.PAS` (plus ARJ)             | `arcview.rs`                  |
 | `ANSIEDIT.PAS` full-screen editor                    | `fse.rs`                      |
 | `DOORS.PAS`, `EXEC.PAS`                              | `doors.rs`                    |
 | `MULTINOD.PAS` node messages and multinode chat      | `multinode.rs`                |
@@ -92,8 +93,7 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 
 ## Not carried over
 
-Messages from `*.BRD`/`*.MIX` (import), verbose file descriptions, LZH/ARJ
-viewers, the local sysop screen and scrollback, the installer and the DOS
+The local sysop screen and scrollback, the installer and the DOS
 utilities (`MAKE*.PAS`, `LADLE`).
 
 ## Layout

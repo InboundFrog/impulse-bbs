@@ -1,6 +1,7 @@
 //! Impulse BBS, re-implemented in Rust from the Impulse 7.1 Pascal sources.
 
 mod acs;
+mod arcview;
 mod cmds;
 mod config;
 mod db;
