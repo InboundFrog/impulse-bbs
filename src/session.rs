@@ -856,6 +856,9 @@ impl Session {
         self.unum = n;
         self.log(&format!("New user #{n} created"));
         self.sprint(&format!("|NL|U1Welcome aboard, |U3{}|U1! You are user |U3#{n}|U1.", self.user.name))?;
+        if self.user.ansi {
+            self.obv_config()?;
+        }
         if find_ci(&cfg.text_path, "NEWUSER.INF").is_some() {
             self.questionnaire("newuser")?;
         }

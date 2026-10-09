@@ -53,7 +53,7 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 ### Commands
 
 - **Menus/display:** `-^ -/ -\` `-F -L -P -S -C -$ -; -W -T` `XY` `SP SC`
-- **Logoff/info:** `HC HI HM` `OI OY OC OL OK/OP OA OB OS` `O1-O3` (matrix logon)
+- **Logoff/info:** `HC HI HM` `OI OY OC OL OK/OP` (OBV/2-style from `NEWINF.ANS` if present) `OA OB OS` `O1-O3` (matrix logon)
   `XC XU XS XH XL XA`
 - **Messages:** `MA MP MS MN M# MZ M$ MJ MK ML ME MM` `CM CF CE` `MQ MR` (QWK)
 - **Files:** `FA FL FS FF FN FP FD FU FV FR FY FK FZ F#` and batch `BL BR BC BD BU B?`

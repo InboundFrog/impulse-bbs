@@ -411,9 +411,75 @@ const FSE_HELP: &[&str] = &[
     "|U1On a line by itself: |U3/S|U1 save  |U3/A|U1 abort  |U3/Q|U1 quote  |U3/?|U1 this help",
 ];
 
+/// Where each `%XX` in `vals` lands (1-based x, y) when `text` is drawn on an
+/// 80-column ANSI screen with the values substituted; for display files that
+/// mark fields (the `wherex`/`wherey` lookups in UCONFIG.PAS).
+// ponytail: tracks text, CR/LF, ESC[H/f/A-D/J and |XX colours; other escapes don't move
+pub fn ansi_marks(text: &str, vals: &[(&str, String)]) -> std::collections::HashMap<String, (usize, usize)> {
+    let (mut x, mut y, mut out) = (1usize, 1usize, std::collections::HashMap::new());
+    let c: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < c.len() {
+        let ch = c[i];
+        i += 1;
+        match ch {
+            '\r' => x = 1,
+            '\n' => y += 1,
+            '\x1b' if c.get(i) == Some(&'[') => {
+                let start = i + 1;
+                i = start;
+                while i < c.len() && !c[i].is_ascii_alphabetic() {
+                    i += 1;
+                }
+                let args: String = c[start..i.min(c.len())].iter().collect();
+                let n: Vec<usize> = args.split(';').map(|a| a.parse().unwrap_or(0)).collect();
+                let n0 = n[0].max(1);
+                match c.get(i) {
+                    Some('H' | 'f') => (y, x) = (n0, n.get(1).copied().unwrap_or(1).max(1)),
+                    Some('A') => y = y.saturating_sub(n0).max(1),
+                    Some('B') => y += n0,
+                    Some('C') => x += n0,
+                    Some('D') => x = x.saturating_sub(n0).max(1),
+                    Some('J') => (x, y) = (1, 1),
+                    _ => {}
+                }
+                i += 1;
+            }
+            '|' if c.get(i..i + 2).is_some_and(|p| p.iter().all(|c| c.is_ascii_alphanumeric())) => i += 2,
+            '%' if i + 2 <= c.len() => {
+                let k: String = c[i..i + 2].iter().collect::<String>().to_ascii_uppercase();
+                match vals.iter().find(|(n, _)| *n == k) {
+                    Some((_, v)) => {
+                        out.insert(k, (x, y));
+                        x += v.chars().count();
+                        i += 2;
+                    }
+                    None => x += 1,
+                }
+            }
+            _ => x += 1,
+        }
+        if x > 80 {
+            (x, y) = (x - 80, y + 1);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn marks() {
+        let v = [("OA", "Bob".to_string()), ("OB", "24".to_string())];
+        let m = ansi_marks("\x1b[2J|09Name: %OA Len: %oB\r\n\x1b[5;10H%op", &v);
+        assert_eq!(m["OA"], (7, 1));
+        assert_eq!(m["OB"], (16, 1));
+        assert!(!m.contains_key("OP"));
+        let m = ansi_marks("\x1b[5;10Hx\x1b[2C%OA", &v);
+        assert_eq!(m["OA"], (13, 5));
+    }
 
     fn typed(b: &mut Buf, s: &str) {
         s.chars().for_each(|c| {

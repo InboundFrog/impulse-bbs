@@ -216,6 +216,9 @@ impl Session {
     }
 
     pub fn user_config(&mut self) -> io::Result<()> {
+        if self.user.ansi && self.obv_config()? {
+            return Ok(());
+        }
         loop {
             let yn = |b: bool| if b { "Yes" } else { "No" };
             let u = &self.user;
@@ -246,28 +249,95 @@ impl Session {
                         self.user.page_len = n;
                     }
                 }
-                'W' => {
-                    self.sprompt("|U1Current password: |U3")?;
-                    let old = self.input_pw(20)?;
-                    if !crate::db::check_login(&self.user.pw_hash, &old) {
-                        self.sprint("|12Wrong password.")?;
-                        continue;
-                    }
-                    self.sprompt("|U1New password: |U3")?;
-                    let p1 = self.input_pw(20)?;
-                    self.sprompt("|U1Again: |U3")?;
-                    if p1.chars().count() >= 4 && p1 == self.input_pw(20)? {
-                        self.user.pw_hash = crate::db::hash_pw(&p1);
-                        self.sprint("|U1Password changed.")?;
-                    } else {
-                        self.sprint("|12Passwords didn't match or were too short.")?;
-                    }
-                }
+                'W' => self.change_pw()?,
                 _ => break,
             }
         }
         self.save_user();
         Ok(())
+    }
+
+    fn change_pw(&mut self) -> io::Result<()> {
+        self.sprompt("|U1Current password: |U3")?;
+        let old = self.input_pw(20)?;
+        if !crate::db::check_login(&self.user.pw_hash, &old) {
+            return self.sprint("|12Wrong password.");
+        }
+        self.sprompt("|U1New password: |U3")?;
+        let p1 = self.input_pw(20)?;
+        self.sprompt("|U1Again: |U3")?;
+        if p1.chars().count() >= 4 && p1 == self.input_pw(20)? {
+            self.user.pw_hash = crate::db::hash_pw(&p1);
+            self.sprint("|U1Password changed.")
+        } else {
+            self.sprint("|12Passwords didn't match or were too short.")
+        }
+    }
+
+    /// UCONFIG.PAS (OBV/2 style): NEWINF.ANS drawn with `%OA`-`%OJ` values in
+    /// place, `%OP` where the prompt goes; edits happen where each value sits.
+    /// False if there's no NEWINF.ANS.
+    // ponytail: name (A) is shown but not editable; no autosig (G) or prompt sets (J)
+    pub fn obv_config(&mut self) -> io::Result<bool> {
+        let Some(path) = crate::session::find_ci(&self.cfg().text_path, "NEWINF.ANS") else { return Ok(false) };
+        let raw: String = std::fs::read(path)?.iter().map(|&b| b as char).collect();
+        loop {
+            let tf = |b: bool| if b { "True " } else { "False" }.to_string();
+            let u = &self.user;
+            let vals = [
+                ("OP", String::new()),
+                ("OA", u.name.clone()),
+                ("OB", u.page_len.to_string()),
+                ("OC", u.note.clone()),
+                ("OD", tf(u.ansi)),
+                ("OE", tf(u.hotkeys)),
+                ("OF", tf(u.pause)),
+                ("OG", String::new()),
+                ("OH", tf(u.novice)),
+                ("OI", "*".repeat(8)),
+                ("OJ", String::new()),
+            ];
+            let pos = crate::fse::ansi_marks(&raw, &vals);
+            for (k, v) in vals {
+                self.vars.insert(k.into(), v);
+            }
+            self.cls()?;
+            let r = self.show_text(&raw);
+            self.vars.clear();
+            r?;
+            let go = |s: &mut Self, k: &str| {
+                let (x, y) = pos.get(k).copied().unwrap_or((1, 24));
+                s.out(&format!("\x1b[{y};{x}H"))
+            };
+            go(self, "OP")?;
+            self.sprompt("|U1Change which (|U3A-I|U1, |U3Q|U1 quits)? |U3")?;
+            let c = self.getkey()?.to_ascii_uppercase();
+            match c {
+                'B' => {
+                    go(self, "OB")?;
+                    if let Ok(n @ 5..=99) = self.input(2)?.parse() {
+                        self.user.page_len = n;
+                    }
+                }
+                'C' => {
+                    go(self, "OC")?;
+                    self.user.note = self.input(40)?;
+                }
+                'D' => self.user.ansi = !self.user.ansi,
+                'E' => self.user.hotkeys = !self.user.hotkeys,
+                'F' => self.user.pause = !self.user.pause,
+                'H' => self.user.novice = !self.user.novice,
+                'I' => {
+                    self.out("\x1b[24;1H")?;
+                    self.change_pw()?;
+                }
+                'Q' | '\r' => break,
+                _ => {}
+            }
+        }
+        self.cls()?;
+        self.save_user();
+        Ok(true)
     }
 
     /// `OC`: page a SysOp who's on another node into a private forum.
