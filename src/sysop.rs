@@ -343,12 +343,14 @@ fn resolve(root: &Path, cwd: &Path, p: &str) -> Option<PathBuf> {
 fn dos_cmd(root: &Path, cwd: &mut PathBuf, line: &str) -> Result<Vec<String>, String> {
     let mut it = line.split_whitespace();
     let cmd = it.next().unwrap_or("").to_uppercase();
-    let (a, b) = (it.next().unwrap_or(""), it.next().unwrap_or(""));
+    let (a, b, c) = (it.next().unwrap_or(""), it.next().unwrap_or(""), it.next().unwrap_or("."));
     let res = |p: &str| resolve(root, cwd, p).ok_or_else(|| "Access denied".to_string());
     let e = |e: io::Error| e.to_string();
     match cmd.as_str() {
         "" => Ok(vec![]),
-        "HELP" | "?" => Ok(vec!["DIR [path]  CD path  TYPE file  DEL file  REN old new  COPY from to  MD dir  RD dir  EXIT".into()]),
+        "HELP" | "?" => {
+            Ok(vec!["DIR [path]  CD path  TYPE file  DEL file  REN old new  COPY from to  MD dir  RD dir  LADLE ansi template [dizdir]  EXIT".into()])
+        }
         "DIR" | "LS" => {
             let mut ents: Vec<_> = std::fs::read_dir(res(a)?).map_err(e)?.flatten().collect();
             ents.sort_by_key(|e| e.file_name());
@@ -382,8 +384,28 @@ fn dos_cmd(root: &Path, cwd: &mut PathBuf, line: &str) -> Result<Vec<String>, St
         "RD" => std::fs::remove_dir(res(a)?).map(|_| vec![]).map_err(e),
         "REN" => std::fs::rename(res(a)?, res(b)?).map(|_| vec![]).map_err(e),
         "COPY" => std::fs::copy(res(a)?, res(b)?).map(|_| vec![]).map_err(e),
+        "LADLE" => {
+            let tem = std::fs::read(res(b)?).map_err(|_| format!("{b} not found!"))?;
+            let Some(sc) = sauce(&std::fs::read(res(a)?).map_err(e)?) else { return Ok(vec!["No SAUCE record.".into()]) };
+            let tem: String = tem.iter().map(|&b| b as char).collect();
+            let diz = [("|ST", 0), ("|SA", 1), ("|SG", 2), ("|SV", 3), ("|SD", 4)].iter().fold(tem, |t, (k, i)| t.replace(k, &sc[*i]));
+            let bytes: Vec<u8> = diz.chars().map(|c| c as u8).collect();
+            std::fs::write(res(c)?.join("FILE_ID.DIZ"), bytes).map(|_| vec!["FILE_ID.DIZ written.".into()]).map_err(e)
+        }
         _ => Err("Bad command or file name.".into()),
     }
+}
+
+/// SAUCE (ASMSAUCE.PAS): title, author, group, version, date as MM/DD/CCYY.
+fn sauce(b: &[u8]) -> Option<[String; 5]> {
+    let r = b.get(b.len().checked_sub(128)?..)?;
+    if !r.starts_with(b"SAUCE") {
+        return None;
+    }
+    let f = |a: usize, n: usize| r[a..a + n].iter().map(|&c| c as char).collect::<String>().trim_end_matches(['\0', ' ']).to_string();
+    let d = f(82, 8);
+    let date = if d.len() == 8 { format!("{}/{}/{}", &d[4..6], &d[6..8], &d[..4]) } else { d };
+    Some([f(7, 35), f(42, 20), f(62, 20), f(5, 2), date])
 }
 
 #[cfg(test)]
@@ -397,5 +419,14 @@ mod tests {
         assert_eq!(super::resolve(root, &root.join("text"), "..\\menus"), Some("/bbs/menus".into()));
         assert_eq!(super::resolve(root, root, "../etc/passwd"), None);
         assert_eq!(super::resolve(root, root, "/etc/passwd"), None);
+    }
+
+    #[test]
+    fn sauce() {
+        let mut b = b"art\x1aSAUCE00".to_vec();
+        b.extend(format!("{:<35}{:<20}{:<20}19950704", "Frog Pic", "Mike", "ACiD").bytes());
+        b.resize(4 + 128, 0);
+        assert_eq!(super::sauce(&b).unwrap(), ["Frog Pic", "Mike", "ACiD", "00", "07/04/1995"].map(String::from));
+        assert!(super::sauce(b"short").is_none());
     }
 }

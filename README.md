@@ -63,7 +63,7 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 - **Misc:** automessage `UR UW UA`, rumors `RR RA RL RD`, time bank `UD UL`,
   new-user voting `-N`, bulletins, BBS list `-V -A`, questionnaires `-Q -R`
 - **SysOp (`%x`):** user, board, file base, config, menu and conference
-  editors, become-user, logs, daily stats, mini-DOS, read all mail, file
+  editors, become-user, logs, daily stats, mini-DOS (with `LADLE` SAUCE → FILE_ID.DIZ), read all mail, file
   maintenance `%1-%9 %$ %%`
 
 ## Running a system
@@ -94,7 +94,7 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 ## Not carried over
 
 The local sysop screen and scrollback, the installer and the DOS
-utilities (`MAKE*.PAS`, `LADLE`).
+utilities (`MAKE*.PAS`).
 
 ## Layout
 
