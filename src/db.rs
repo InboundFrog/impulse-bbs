@@ -290,6 +290,10 @@ impl Db {
         self.save()
     }
 
+    pub fn put_msgs(&self, file: &str, v: &[Msg]) -> io::Result<()> {
+        store(&self.msg_path(file), &v)
+    }
+
     /// Drop the oldest non-permanent messages beyond `max`; returns how many.
     pub fn prune(&mut self, file: &str, max: usize) -> io::Result<usize> {
         let mut v = self.msgs(file)?;

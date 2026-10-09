@@ -1,10 +1,11 @@
 //! `impulse import DIR [config]`: one-time migration of an Impulse 7.1
 //! system's USER.LST, BOARDS.DAT, UPLOADS.DAT and *.DIR files (RECORDS.PAS
 //! layouts; Turbo Pascal records are packed, string[n] is a length byte + n).
-//! Messages (*.BRD/*.MIX) and verbose descriptions aren't carried over.
+//! Message bases come from *.MIX (index) + *.BRD (headers and text),
+//! with EMAIL.MIX/BRD for e-mail.
 
 use crate::config::{Anon, Board, Config, FBase};
-use crate::db::{self, Db, FileRec, User};
+use crate::db::{self, Db, FileRec, Msg, User};
 use crate::session::find_ci;
 use std::path::{Path, PathBuf};
 
@@ -12,6 +13,8 @@ const USER_LEN: usize = 843;
 const BOARD_LEN: usize = 256;
 const UBOARD_LEN: usize = 237;
 const ULF_LEN: usize = 146;
+const MIX_LEN: usize = 27;
+const MHEAD_LEN: usize = 333;
 
 /// Cursor over one record.
 struct R<'a> {
@@ -68,7 +71,8 @@ fn dos_path(p: &str) -> PathBuf {
     PathBuf::from(p.replace('\\', "/").trim_end_matches('/').to_lowercase())
 }
 
-fn user(b: &[u8], boards: &[Board], fbases: &[FBase]) -> User {
+/// The user plus their last-read message number per board (zzqscan).
+fn user(b: &[u8], boards: &[Board], fbases: &[FBase]) -> (User, Vec<u16>) {
     let mut r = R { b, p: 0 };
     let mut u = User { name: r.s(36), real_name: r.s(36), ..User::default() };
     u.pw_hash = db::hash_pw(&r.s(20));
@@ -107,7 +111,8 @@ fn user(b: &[u8], boards: &[Board], fbases: &[FBase]) -> User {
     u.list_fields = "NSPDEWTC".chars().enumerate().filter(|&(i, _)| has(&ff, i, 0)).map(|(_, c)| c).collect();
     let ar = r.take(4).to_vec();
     u.ar = ('A'..='Z').filter(|&c| has(&ar, c as usize, '@' as usize)).collect();
-    r.skip(128 + 128); // last-read pointers: messages aren't imported
+    let ptrs: Vec<u16> = r.take(128).chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    r.skip(128);
     let scan = r.take(64).to_vec();
     u.no_scan = boards.iter().take(64).enumerate().filter(|&(i, _)| scan[i] == 0).map(|(_, b)| b.file.clone()).collect();
     let fscan = r.take(13).to_vec();
@@ -145,7 +150,7 @@ fn user(b: &[u8], boards: &[Board], fbases: &[FBase]) -> User {
     r.s(8);
     r.skip(1 + 4);
     debug_assert_eq!(r.p, USER_LEN);
-    u
+    (u, ptrs)
 }
 
 fn board(b: &[u8]) -> Board {
@@ -213,6 +218,95 @@ fn file_rec(b: &[u8], size_of: impl Fn(&str) -> Option<u64>) -> FileRec {
     FileRec { name, desc, ext: Vec::new(), points, downloads, size, owner, owner_num, date: d, unvalidated }
 }
 
+/// Packed date/time (TIMEJUNK.PAS dt2pdt) -> "YYYY-MM-DD HH:MM".
+fn pdt(p: &[u8]) -> String {
+    let year = ((p[0] as u32) << 7) + ((p[1] as u32 & 254) >> 1) + 1800;
+    let month = ((p[1] & 1) << 3) + ((p[2] & 224) >> 5);
+    let day = p[2] & 31;
+    let hour = (p[3] & 248) >> 3;
+    let min = ((p[3] & 7) << 3) + ((p[4] & 224) >> 5);
+    format!("{year:04}-{month:02}-{day:02} {hour:02}:{min:02}")
+}
+
+/// One message base: live messages in order, with their old msgid.
+/// `email` puts the MIX messagenum (recipient) into `to_num`.
+fn msg_base(mix: &[u8], brd: &[u8], email: bool) -> Vec<(i32, Msg)> {
+    let mut out = Vec::new();
+    for ix in records(mix, MIX_LEN) {
+        let mut r = R { b: ix, p: 0 };
+        let num = r.i16() as u16 as usize;
+        let hdr = r.i32();
+        let id = r.i32();
+        let reply_id = r.i32();
+        let date = pdt(r.take(6));
+        r.skip(1);
+        let stat = r.take(2).to_vec();
+        if hdr < 0 || !has(&stat, 0, 0) || hdr as usize + MHEAD_LEN > brd.len() {
+            continue;
+        }
+        let mut h = R { b: &brd[hdr as usize..hdr as usize + MHEAD_LEN], p: 0 };
+        h.skip(4);
+        let ptr = h.i32().max(0) as usize;
+        let len = h.i32().max(0) as usize;
+        let fromtoi = |h: &mut R| {
+            let anon = h.u8();
+            let num = h.i16() as u16 as usize;
+            let (asn, _real, alias) = (h.s(42), h.s(36), h.s(36));
+            (anon, num, asn, alias)
+        };
+        let (anon, from_num, from_asn, from_alias) = fromtoi(&mut h);
+        let (_, _, to_asn, to_alias) = fromtoi(&mut h);
+        let subject = h.s(60);
+        // text: $FF, length, bytes per line, `len` counts length+2 each
+        let mut body = Vec::new();
+        let (mut p, mut got) = (ptr, 0);
+        while got < len && p + 2 <= brd.len() && brd[p] == 0xFF {
+            let n = brd[p + 1] as usize;
+            let end = (p + 2 + n).min(brd.len());
+            body.push(brd[p + 2..end].iter().map(|&c| c as char).collect::<String>());
+            got += n + 2;
+            p = end;
+        }
+        let from = if from_alias.is_empty() { from_asn.clone() } else { from_alias };
+        let m = Msg {
+            from,
+            from_num,
+            to: if to_asn.is_empty() { to_alias } else { to_asn },
+            to_num: if email { num } else { 0 },
+            subject,
+            date,
+            body,
+            anon: if anon <= 5 { anon } else { 0 },
+            alias: if anon == 5 { from_asn } else { String::new() },
+            reply_to: reply_id.max(0) as u64, // remapped by the caller
+            permanent: has(&stat, 3, 0),
+            unvalidated: has(&stat, 2, 0),
+            ..Msg::default()
+        };
+        out.push((id, m));
+    }
+    out
+}
+
+/// Give a base's messages new ids, re-pointing replies inside the base.
+fn renumber(v: Vec<(i32, Msg)>, next: &mut u64) -> Vec<Msg> {
+    let mut map = std::collections::HashMap::new();
+    let mut out = Vec::with_capacity(v.len());
+    for (old, mut m) in v {
+        *next += 1;
+        map.insert(old as u64, *next);
+        m.id = *next;
+        m.reply_to = map.get(&m.reply_to).copied().unwrap_or(0);
+        out.push(m);
+    }
+    out
+}
+
+/// A file in `dir` or one directory down (MSGPATH is usually a subdirectory).
+fn find_near(dir: &Path, name: &str) -> Option<PathBuf> {
+    find_ci(dir, name).or_else(|| std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).filter(|p| p.is_dir()).find_map(|d| find_ci(&d, name)))
+}
+
 fn records(b: &[u8], len: usize) -> impl Iterator<Item = &[u8]> {
     b.chunks_exact(len)
 }
@@ -250,10 +344,37 @@ pub fn run(dir: &Path, cfg_path: &str) -> Result<String, String> {
         out.push(format!("{files} files"));
     }
     let mut db = db;
+    let mut ptrs = Vec::new();
     if let Some(b) = read("USER.LST") {
         // record 0 is unused; record n is user n
-        db.users = records(&b, USER_LEN).skip(1).map(|r| user(r, &cfg.boards, &cfg.fbases)).collect();
+        (db.users, ptrs) = records(&b, USER_LEN).skip(1).map(|r| user(r, &cfg.boards, &cfg.fbases)).unzip();
         out.push(format!("{} users", db.users.len()));
+    }
+    let mut msgs = 0;
+    let load = |name: &str| {
+        let mix = std::fs::read(find_near(dir, &format!("{name}.MIX"))?).ok()?;
+        let brd = std::fs::read(find_near(dir, &format!("{name}.BRD"))?).unwrap_or_default();
+        Some((mix, brd))
+    };
+    for (i, b) in cfg.boards.clone().iter().enumerate() {
+        let Some((mix, brd)) = load(&b.file.to_uppercase()) else { continue };
+        let v = renumber(msg_base(&mix, &brd, false), &mut db.sys.next_msg_id);
+        // a user's pointer is how many messages of the base they'd read
+        for (u, p) in db.users.iter_mut().zip(&ptrs) {
+            if let Some(m) = p.get(i).filter(|&&n| n > 0).and_then(|&n| v.get(n as usize - 1).or(v.last())) {
+                u.last_read.insert(b.file.clone(), m.id);
+            }
+        }
+        msgs += v.len();
+        db.put_msgs(&b.file, &v).map_err(|e| e.to_string())?;
+    }
+    if let Some((mix, brd)) = load("EMAIL") {
+        let v = renumber(msg_base(&mix, &brd, true), &mut db.sys.next_msg_id);
+        msgs += v.len();
+        db.put_msgs("email", &v).map_err(|e| e.to_string())?;
+    }
+    if msgs > 0 {
+        out.push(format!("{msgs} messages"));
     }
     if out.is_empty() {
         return Err(format!("No USER.LST, BOARDS.DAT or UPLOADS.DAT in {}", dir.display()));
@@ -303,8 +424,56 @@ mod tests {
         pstr(&mut u, "Jeff", 36);
         pstr(&mut u, "SECRET", 20);
         u.resize(USER_LEN, 0);
-        let us = user(&u, &[], &[]);
+        let (us, _) = user(&u, &[], &[]);
         assert_eq!((us.name.as_str(), us.real_name.as_str()), ("THE DUDE", "Jeff"));
         assert!(db::check_pw(&us.pw_hash, "SECRET"));
+    }
+
+    #[test]
+    fn messages() {
+        // 1998-07-27 14:35 packed as dt2pdt does it
+        let (y, mo, d, h, mi) = (1998u32 - 1800, 7u8, 27u8, 14u8, 35u8);
+        let date = [(y >> 7) as u8, ((y & 127) << 1) as u8 + (mo >> 3), ((mo & 7) << 5) + d, (h << 3) + (mi >> 3), (mi & 7) << 5, 0];
+        assert_eq!(pdt(&date), "1998-07-27 14:35");
+
+        let mut brd = Vec::new();
+        let mut mix = Vec::new();
+        for (i, (from, text)) in [("BOB", vec!["hi", "there"]), ("ANN", vec!["re: hi"])].iter().enumerate() {
+            let hdr = brd.len() as i32;
+            let len: usize = text.iter().map(|l| l.len() + 2).sum();
+            brd.extend((-1i32).to_le_bytes());
+            brd.extend((hdr + MHEAD_LEN as i32).to_le_bytes());
+            brd.extend((len as i32).to_le_bytes());
+            brd.extend([0, 1 + i as u8, 0]);
+            pstr(&mut brd, "", 42);
+            pstr(&mut brd, "", 36);
+            pstr(&mut brd, from, 36);
+            brd.extend([0, 0, 0]);
+            pstr(&mut brd, "ALL", 42);
+            pstr(&mut brd, "", 36);
+            pstr(&mut brd, "", 36);
+            pstr(&mut brd, "Hello", 60);
+            pstr(&mut brd, "", 19);
+            for l in text {
+                brd.extend([0xFF, l.len() as u8]);
+                brd.extend(l.bytes());
+            }
+            mix.extend((i as u16).to_le_bytes());
+            mix.extend(hdr.to_le_bytes());
+            mix.extend((100 + i as i32).to_le_bytes());
+            mix.extend((if i == 1 { 100i32 } else { 0 }).to_le_bytes());
+            mix.extend(date);
+            mix.extend([1, 1, 0, 0xff, 0xff, 0, 0]); // dow, miexist
+        }
+        // a deleted slot
+        mix.extend([0u8; 2]);
+        mix.extend((-1i32).to_le_bytes());
+        mix.resize(3 * MIX_LEN, 0);
+        let v = msg_base(&mix, &brd, false);
+        assert_eq!(v.len(), 2);
+        assert_eq!((v[0].1.from.as_str(), v[0].1.from_num, v[0].1.body.clone()), ("BOB", 1, vec!["hi".to_string(), "there".into()]));
+        let mut next = 10;
+        let m = renumber(v, &mut next);
+        assert_eq!((m[0].id, m[1].id, m[1].reply_to, m[1].to.as_str(), m[1].date.as_str()), (11, 12, 11, "ALL", "1998-07-27 14:35"));
     }
 }
