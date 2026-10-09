@@ -745,6 +745,17 @@ impl Session {
         self.unum = n;
         self.log(&format!("New user #{n} created"));
         self.sprint(&format!("|NL|U1Welcome aboard, |U3{}|U1! You are user |U3#{n}|U1.", self.user.name))?;
+        if find_ci(&cfg.text_path, "NEWUSER.INF").is_some() {
+            self.questionnaire("newuser")?;
+        }
+        if cfg.auto_validate_new {
+            let mut u = self.user.clone();
+            self.auto_validate(&mut u);
+            self.user = u;
+            self.save_user();
+        } else if cfg.use_nuv && self.user.sl <= cfg.new_sl {
+            self.nuv_add()?;
+        }
         Ok(())
     }
 
@@ -783,6 +794,13 @@ impl Session {
         self.log("Logon");
         if self.printf("logon")? {
             self.pause()?;
+        }
+        if self.nuv_pending() {
+            self.new_user_vote()?;
+        }
+        let waiting = self.sh.db().msgs("email")?.iter().filter(|m| m.to_num == self.unum).count();
+        if waiting > 0 && self.pynq(&format!("|NL|U1You have |U3{waiting}|U1 letter(s) waiting. Read them now? "), true)? {
+            self.read_mail()?;
         }
         Ok(())
     }

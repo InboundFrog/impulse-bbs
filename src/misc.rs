@@ -263,9 +263,19 @@ impl Session {
             }
             return Ok(());
         };
-        let head = format!("User: {} #{n}", self.sh.db().users[n - 1].name);
-        let mut found = false;
-        let mut show = false;
+        if !self.show_answers(&stem, n)? {
+            self.sprint("|12Questionnaire answers not found.")?;
+        }
+        Ok(())
+    }
+
+    /// Print user `n`'s answers from `<data>/STEM.ASW`; false if there are none.
+    pub fn show_answers(&mut self, stem: &str, n: usize) -> io::Result<bool> {
+        let Ok(text) = std::fs::read(self.sh.db().path(&format!("{stem}.ASW"))) else { return Ok(false) };
+        let text: String = text.iter().map(|&b| b as char).collect();
+        let Some(name) = self.sh.db().users.get(n - 1).map(|u| u.name.clone()) else { return Ok(false) };
+        let head = format!("User: {name} #{n}");
+        let (mut found, mut show) = (false, false);
         for l in text.lines() {
             if l.starts_with("User: ") {
                 show = l.eq_ignore_ascii_case(&head);
@@ -276,9 +286,6 @@ impl Session {
                 self.nl()?;
             }
         }
-        if !found {
-            self.sprint("|12Questionnaire answers not found.")?;
-        }
-        Ok(())
+        Ok(found)
     }
 }

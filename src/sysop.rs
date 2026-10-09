@@ -137,16 +137,8 @@ impl Session {
                         self.log(&format!("* Attempt to delete user {} #{n}", u.name));
                         self.sprint("|12Access denied - this user is protected from deletion.")?;
                     } else if self.pynq("|U1Any e-mail to or from this user will be deleted. |12*DELETE*|U1 this user? ", false)? {
-                        u.deleted = true;
                         self.log(&format!("* Deleted user {} #{n}", u.name));
-                        {
-                            let mut db = self.sh.db();
-                            let mail = db.msgs("email")?;
-                            for m in mail.iter().filter(|m| m.to_num == n || m.from_num == n) {
-                                db.delete_msg("email", m.id)?;
-                            }
-                        }
-                        self.store_user(n, u)?;
+                        self.nuke_user(n)?;
                     }
                 }
                 '@' => {
@@ -192,6 +184,20 @@ impl Session {
             self.board = self.board.min(self.cfg().boards.len().saturating_sub(1));
         }
         Ok(())
+    }
+
+    /// Mark user `n` deleted and remove their e-mail (nukeuser).
+    pub fn nuke_user(&mut self, n: usize) -> io::Result<()> {
+        let Some(mut u) = self.sh.db().users.get(n - 1).cloned() else { return Ok(()) };
+        u.deleted = true;
+        {
+            let mut db = self.sh.db();
+            let mail = db.msgs("email")?;
+            for m in mail.iter().filter(|m| m.to_num == n || m.from_num == n) {
+                db.delete_msg("email", m.id)?;
+            }
+        }
+        self.store_user(n, u)
     }
 
     /// `%S` (pullconfig): every system setting.

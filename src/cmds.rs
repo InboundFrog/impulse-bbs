@@ -11,7 +11,8 @@ impl Session {
         match (c1, c2) {
             ('-', '^' | '/' | '\\') => return self.change_menu(c2, data),
             // prompt menus (readp/emailp/filep): hand the key back to the reader
-            ('@' | '$' | '!', _) => self.pkey = Some(c2),
+            ('@' | '$' | '!', _) | ('V', 'Y' | 'N' | 'V' | 'D') => self.pkey = Some(c2),
+            ('-', 'N') => self.new_user_vote()?,
             ('-', 'F') => {
                 self.printf(data)?;
             }

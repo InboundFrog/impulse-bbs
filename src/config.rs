@@ -45,6 +45,12 @@ pub struct Config {
     pub auto_dsl: u8,
     pub auto_ar: String,
     pub auto_ac: String,
+    /// New users are validated straight away (autov).
+    pub auto_validate_new: bool,
+    /// Otherwise put them up for new user voting, decided by this many votes.
+    pub use_nuv: bool,
+    pub nuv_yes: u32,
+    pub nuv_no: u32,
     pub boards: Vec<Board>,
     /// Message and file conferences (MCONF.DAT / FCONF.DAT), numbered from 1.
     pub msg_confs: Vec<Conf>,
@@ -113,6 +119,10 @@ pub struct Strings {
     pub mail_prompt: String,
     pub delete_read_mail: String,
     pub post_here: String,
+    /// NUV vote prompt when there's no NUVP menu.
+    pub nuv_prompt: String,
+    pub nuv_validated: String,
+    pub nuv_deleted: String,
 }
 
 impl Default for Config {
@@ -143,6 +153,10 @@ impl Default for Config {
             auto_dsl: 50,
             auto_ar: String::new(),
             auto_ac: String::new(),
+            auto_validate_new: false,
+            use_nuv: false,
+            nuv_yes: 5,
+            nuv_no: 3,
             msop_acs: "s250".into(),
             anon_pub_read: "s250".into(),
             anon_priv_read: "s250".into(),
@@ -177,6 +191,9 @@ impl Default for Strings {
             mail_prompt: "|NL|U1Mail |U2(|U3?|U2=help)|U1: |U3".into(),
             delete_read_mail: "|U1Delete this letter? ".into(),
             post_here: "|NL|U1Post a message on this base? ".into(),
+            nuv_prompt: "|NL|U1Vote |U2(|U3Y|U2)es (|U3N|U2)o (|U3A|U2)bstain (|U3Q|U2)uit|U1: |U3".into(),
+            nuv_validated: "|NL|U1The user has been validated.".into(),
+            nuv_deleted: "|NL|U1The user has been deleted.".into(),
         }
     }
 }

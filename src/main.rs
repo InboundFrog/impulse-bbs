@@ -8,6 +8,7 @@ mod edit;
 mod menu;
 mod misc;
 mod msgs;
+mod nuv;
 mod session;
 mod sysop;
 mod term;
