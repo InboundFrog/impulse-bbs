@@ -443,7 +443,7 @@ impl Session {
             "NT" => self.sh.db().sys.zlog().new_users.to_string(),
             "NP" | "TP" => self.sh.db().sys.zlog().pub_posts.to_string(),
             "FT" | "NF" => self.sh.db().sys.zlog().uploads.to_string(),
-            "LC" => self.sh.db().sys.last_callers.first().map(|l| l.name.clone()).unwrap_or_default(),
+            "LC" => self.sh.db().sys.last_callers.get(usize::from(self.unum > 0)).map(|l| l.name.clone()).unwrap_or_default(),
             "CM" => cfg.boards.get(self.board).map(|b| b.name.clone()).unwrap_or_default(),
             "NM" => strip_pipes(&self.menu.title[0]),
             "NN" => self.node.to_string(),
