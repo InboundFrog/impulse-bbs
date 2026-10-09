@@ -1,8 +1,8 @@
 //! Persistent data: users (USER.LST), system state (STATUS.DAT counters,
 //! LASTON.DAT) and message bases. Stored as JSON under `data_path`.
 
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng};
 use argon2::Argon2;
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
 use std::fs;
@@ -248,12 +248,7 @@ impl Db {
     pub fn open(dir: &Path) -> io::Result<Db> {
         fs::create_dir_all(dir.join("msgs"))?;
         fs::create_dir_all(dir.join("files"))?;
-        Ok(Db {
-            dir: dir.to_path_buf(),
-            users: load(&dir.join("users.json"))?,
-            sys: load(&dir.join("system.json"))?,
-            online: BTreeMap::new(),
-        })
+        Ok(Db { dir: dir.to_path_buf(), users: load(&dir.join("users.json"))?, sys: load(&dir.join("system.json"))?, online: BTreeMap::new() })
     }
 
     pub fn save(&self) -> io::Result<()> {

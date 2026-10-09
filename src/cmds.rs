@@ -292,7 +292,13 @@ impl Session {
         let why = self.input(60)?;
         let forum = 10 + self.node as u8;
         for n in sysops {
-            self.send_node(n, format!("|U5{} on node #{}|U4 is paging you for chat: |U3{why}|NL|U4Use |U3NC|U4 and enter forum |U3{forum}|U4 to answer.", self.user.name, self.node));
+            self.send_node(
+                n,
+                format!(
+                    "|U5{} on node #{}|U4 is paging you for chat: |U3{why}|NL|U4Use |U3NC|U4 and enter forum |U3{forum}|U4 to answer.",
+                    self.user.name, self.node
+                ),
+            );
         }
         self.log(&format!("Chat request: {why}"));
         self.sprint("|U1Paging the SysOp... wait in the chat forum.")?;
@@ -309,15 +315,8 @@ impl Session {
     }
 
     pub fn user_list(&mut self) -> io::Result<()> {
-        let users: Vec<(usize, String, String, u8)> = self
-            .sh
-            .db()
-            .users
-            .iter()
-            .enumerate()
-            .filter(|(_, u)| !u.deleted)
-            .map(|(i, u)| (i + 1, u.name.clone(), u.city_state.clone(), u.sl))
-            .collect();
+        let users: Vec<(usize, String, String, u8)> =
+            self.sh.db().users.iter().enumerate().filter(|(_, u)| !u.deleted).map(|(i, u)| (i + 1, u.name.clone(), u.city_state.clone(), u.sl)).collect();
         self.sprint("|NL|U2#     Handle                         From                       SL")?;
         for (n, name, from, sl) in users {
             self.sprint(&format!("|U1{n:<5} |U3{name:<30} |U1{from:<26} |U2{sl}"))?;
@@ -326,8 +325,7 @@ impl Session {
     }
 
     pub fn whos_online(&mut self) -> io::Result<()> {
-        let list: Vec<(usize, String, String)> =
-            self.sh.db().online.iter().map(|(n, o)| (*n, o.name.clone(), o.doing.clone())).collect();
+        let list: Vec<(usize, String, String)> = self.sh.db().online.iter().map(|(n, o)| (*n, o.name.clone(), o.doing.clone())).collect();
         self.sprint("|NL|U2Node  Handle                         Activity")?;
         for (n, name, doing) in list {
             self.sprint(&format!("|U3{n:<5} |U1{name:<30} |U3{doing}"))?;
@@ -441,11 +439,12 @@ impl Session {
         self.sprompt("|NL|U1Delete which rumor? |U3")?;
         let mut list = self.sh.db().lines("rumors.txt");
         if let Ok(n @ 1..) = self.input(4)?.parse::<usize>()
-            && n <= list.len() {
-                list.remove(n - 1);
-                self.sh.db().put_lines("rumors.txt", &list)?;
-                self.sprint("|U1Rumor deleted.")?;
-            }
+            && n <= list.len()
+        {
+            list.remove(n - 1);
+            self.sh.db().put_lines("rumors.txt", &list)?;
+            self.sprint("|U1Rumor deleted.")?;
+        }
         Ok(())
     }
 }

@@ -43,11 +43,7 @@ impl Session {
             return Ok(());
         }
         let from = format!("|U5{} #{}|U4 on node #|U3{}|U5 says,|NL|U4\"|U3{m}|U4\"", self.user.name, self.unum, self.node);
-        if self.send_node(n, from) {
-            self.sprint("|U1Message sent.")
-        } else {
-            self.sprint("|12Nobody is on that node.")
-        }
+        if self.send_node(n, from) { self.sprint("|U1Message sent.") } else { self.sprint("|12Nobody is on that node.") }
     }
 
     /// Send `msg` to everyone else in `forum`.

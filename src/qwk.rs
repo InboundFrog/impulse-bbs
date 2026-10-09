@@ -177,8 +177,7 @@ impl Session {
         self.sprint(&format!("|NL|U1Upload your |U3{id}.REP|U1 packet."))?;
         let Some(p) = self.choose_protocol(true, false)? else { return Ok(()) };
         self.run_protocol(&p.ul_cmd, &[], &dir)?;
-        let Some(rep) = std::fs::read_dir(&dir)?.flatten().map(|e| e.path()).find(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("rep")))
-        else {
+        let Some(rep) = std::fs::read_dir(&dir)?.flatten().map(|e| e.path()).find(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("rep"))) else {
             return self.sprint("|NL|12No .REP packet received.");
         };
         let _ = Command::new("unzip").args(["-o", "-j", "-qq"]).arg(&rep).current_dir(&dir).status();

@@ -30,7 +30,8 @@ impl Session {
 
     /// Any users this caller hasn't voted on yet (logon check).
     pub fn nuv_pending(&self) -> bool {
-        self.user.sl > self.cfg().new_sl && self.sh.db().get::<Vec<Nuv>>(FILE).unwrap_or_default().iter().any(|n| !n.voted_by.contains(&self.unum) && n.unum != self.unum)
+        self.user.sl > self.cfg().new_sl
+            && self.sh.db().get::<Vec<Nuv>>(FILE).unwrap_or_default().iter().any(|n| !n.voted_by.contains(&self.unum) && n.unum != self.unum)
     }
 
     /// `-N` (newUserVote).

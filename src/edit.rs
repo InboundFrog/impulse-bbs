@@ -54,10 +54,7 @@ impl Session {
     /// `tmpls` gives the entry template for list fields (by field name).
     pub fn edit_rec<T: Serialize + DeserializeOwned>(&mut self, title: &str, rec: &T, hide: &[&str], tmpls: &Tmpls) -> io::Result<Option<T>> {
         let mut v = serde_json::to_value(rec).map_err(io::Error::other)?;
-        let hidden: Vec<(String, Value)> = hide
-            .iter()
-            .filter_map(|k| v.as_object_mut()?.remove(*k).map(|x| (k.to_string(), x)))
-            .collect();
+        let hidden: Vec<(String, Value)> = hide.iter().filter_map(|k| v.as_object_mut()?.remove(*k).map(|x| (k.to_string(), x))).collect();
         if !self.edit_value(title, &mut v, None, tmpls)? {
             return Ok(None);
         }
@@ -164,11 +161,12 @@ impl Session {
                 }
                 "D" => {
                     if let Some(at) = pick(self, "Delete", len)?
-                        && self.pynq(&format!("|U1Delete |U3{}|U1? ", label(&a[at])), false)? {
-                            let Value::Array(a) = v else { continue };
-                            a.remove(at);
-                            changed = true;
-                        }
+                        && self.pynq(&format!("|U1Delete |U3{}|U1? ", label(&a[at])), false)?
+                    {
+                        let Value::Array(a) = v else { continue };
+                        a.remove(at);
+                        changed = true;
+                    }
                 }
                 "M" => {
                     let Some(from) = pick(self, "Move", len)? else { continue };
@@ -180,10 +178,11 @@ impl Session {
                 }
                 n => {
                     if let Ok(n @ 1..) = n.parse::<usize>()
-                        && n <= len {
-                            let t = format!("{title} #{n}");
-                            changed |= self.edit_value(&t, &mut a[n - 1], None, tmpls)?;
-                        }
+                        && n <= len
+                    {
+                        let t = format!("{title} #{n}");
+                        changed |= self.edit_value(&t, &mut a[n - 1], None, tmpls)?;
+                    }
                 }
             }
         }

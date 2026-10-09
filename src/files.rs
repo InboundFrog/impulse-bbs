@@ -454,7 +454,16 @@ impl Session {
         }
         self.out_field("Date", &f.date)?;
         let on_disk = file_path(&fb, &f.name).exists();
-        self.out_field("Stat", if f.unvalidated { "Not validated" } else if on_disk { "Available" } else { "Offline" })?;
+        self.out_field(
+            "Stat",
+            if f.unvalidated {
+                "Not validated"
+            } else if on_disk {
+                "Available"
+            } else {
+                "Offline"
+            },
+        )?;
         Ok(())
     }
 
@@ -715,10 +724,11 @@ impl Session {
         }
         self.sprompt("|NL|U1Remove which file? |U3")?;
         if let Ok(n @ 1..) = self.input(3)?.parse::<usize>()
-            && n <= self.batch.len() {
-                self.batch.remove(n - 1);
-                self.sprint("|U1Removed.")?;
-            }
+            && n <= self.batch.len()
+        {
+            self.batch.remove(n - 1);
+            self.sprint("|U1Removed.")?;
+        }
         Ok(())
     }
 
@@ -1025,16 +1035,7 @@ impl Session {
                     'Q' => return Ok(()),
                     _ => continue,
                 };
-                v.push(FileRec {
-                    name,
-                    desc,
-                    ext,
-                    size,
-                    owner: self.user.name.clone(),
-                    owner_num: self.unum,
-                    date: today(),
-                    ..FileRec::default()
-                });
+                v.push(FileRec { name, desc, ext, size, owner: self.user.name.clone(), owner_num: self.unum, date: today(), ..FileRec::default() });
                 self.sh.db().put_files(&fb.file, &v)?;
             }
         }
@@ -1134,7 +1135,10 @@ impl Session {
                     Some(m) => m.len().to_string(),
                     None => "?".into(),
                 };
-                let when = md.and_then(|m| m.modified().ok()).map(|t| chrono::DateTime::<chrono::Local>::from(t).format("%m-%d-%y  %H:%M").to_string()).unwrap_or_default();
+                let when = md
+                    .and_then(|m| m.modified().ok())
+                    .map(|t| chrono::DateTime::<chrono::Local>::from(t).format("%m-%d-%y  %H:%M").to_string())
+                    .unwrap_or_default();
                 self.out(&format!("{name:<20} {size:>10}  {when}"))?;
                 self.nl()?;
             } else {

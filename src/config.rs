@@ -248,8 +248,22 @@ impl Default for Config {
             boards: vec![Board { name: "General".into(), file: "general".into(), post_acs: "s20".into(), ..Board::default() }],
             fbases: vec![FBase { name: "Uploads".into(), file: "uploads".into(), dl_path: "data/files/uploads".into(), ..FBase::default() }],
             protocols: vec![
-                Protocol { key: "Z".into(), name: "Zmodem".into(), dl_cmd: "sz -b -e %F".into(), ul_cmd: "rz -b -e".into(), batch: true, ..Protocol::default() },
-                Protocol { key: "Y".into(), name: "Ymodem".into(), dl_cmd: "sz -b --ymodem %F".into(), ul_cmd: "rz -b --ymodem".into(), batch: true, ..Protocol::default() },
+                Protocol {
+                    key: "Z".into(),
+                    name: "Zmodem".into(),
+                    dl_cmd: "sz -b -e %F".into(),
+                    ul_cmd: "rz -b -e".into(),
+                    batch: true,
+                    ..Protocol::default()
+                },
+                Protocol {
+                    key: "Y".into(),
+                    name: "Ymodem".into(),
+                    dl_cmd: "sz -b --ymodem %F".into(),
+                    ul_cmd: "rz -b --ymodem".into(),
+                    batch: true,
+                    ..Protocol::default()
+                },
                 Protocol { key: "X".into(), name: "Xmodem".into(), dl_cmd: "sz -b --xmodem %F".into(), ul_cmd: String::new(), ..Protocol::default() },
             ],
             events: Vec::new(),
@@ -322,5 +336,12 @@ impl Config {
 /// Entry templates for the list settings, for the configuration editor.
 pub fn templates() -> Vec<(String, serde_json::Value)> {
     use crate::edit::tmpl;
-    vec![tmpl::<Board>("boards"), tmpl::<FBase>("fbases"), tmpl::<Protocol>("protocols"), tmpl::<Conf>("msg_confs"), tmpl::<Conf>("file_confs"), tmpl::<Event>("events")]
+    vec![
+        tmpl::<Board>("boards"),
+        tmpl::<FBase>("fbases"),
+        tmpl::<Protocol>("protocols"),
+        tmpl::<Conf>("msg_confs"),
+        tmpl::<Conf>("file_confs"),
+        tmpl::<Event>("events"),
+    ]
 }

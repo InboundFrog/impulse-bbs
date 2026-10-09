@@ -43,15 +43,17 @@ pub fn in_window(e: &Event, t: NaiveDateTime) -> bool {
 
 /// Background thread: run due `D`/`E` events, once a minute.
 pub fn spawn(sh: Arc<Shared>) {
-    std::thread::spawn(move || loop {
-        let secs = Local::now().second() as u64;
-        std::thread::sleep(Duration::from_secs(60 - secs.min(59)));
-        let now = Local::now().naive_local();
-        for e in sh.cfg().events.iter().filter(|e| e.active && e.kind != "A") {
-            if minutes_until(e, now, 0) == Some(0) {
-                sh.db().log(&format!("[{}] Event \"{}\": {}", crate::session::now(), e.description, e.data));
-                let st = std::process::Command::new("sh").arg("-c").arg(&e.data).status();
-                sh.db().log(&format!("[{}] Event \"{}\" finished: {st:?}", crate::session::now(), e.description));
+    std::thread::spawn(move || {
+        loop {
+            let secs = Local::now().second() as u64;
+            std::thread::sleep(Duration::from_secs(60 - secs.min(59)));
+            let now = Local::now().naive_local();
+            for e in sh.cfg().events.iter().filter(|e| e.active && e.kind != "A") {
+                if minutes_until(e, now, 0) == Some(0) {
+                    sh.db().log(&format!("[{}] Event \"{}\": {}", crate::session::now(), e.description, e.data));
+                    let st = std::process::Command::new("sh").arg("-c").arg(&e.data).status();
+                    sh.db().log(&format!("[{}] Event \"{}\" finished: {st:?}", crate::session::now(), e.description));
+                }
             }
         }
     });

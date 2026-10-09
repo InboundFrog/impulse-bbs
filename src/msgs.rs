@@ -337,7 +337,10 @@ impl Session {
             Ok(n @ 1..) if n <= list.len() && list[n - 1] != from => list[n - 1],
             _ => return Ok(false),
         };
-        let (src, dst) = { let c = self.cfg(); (c.boards[from].clone(), c.boards[to].clone()) };
+        let (src, dst) = {
+            let c = self.cfg();
+            (c.boards[from].clone(), c.boards[to].clone())
+        };
         {
             let mut db = self.sh.db();
             db.delete_msg(&src.file, m.id)?;
@@ -584,7 +587,14 @@ impl Session {
                 self.out(&me)?;
                 self.nl()?;
                 self.sprompt("|NL|U1Which? |U3")?;
-                (match self.onek("123N\r")? { '1' => 3, '2' => 4, _ => 0 }, String::new())
+                (
+                    match self.onek("123N\r")? {
+                        '1' => 3,
+                        '2' => 4,
+                        _ => 0,
+                    },
+                    String::new(),
+                )
             }
             Anon::AnyName => {
                 self.sprint("|NL|U1You can post your message under any name you want on this base.")?;
@@ -624,18 +634,7 @@ impl Session {
             body = body.iter().map(|l| strip_pipes(l)).collect();
         }
         let from = if board.real_names && !self.user.real_name.is_empty() { self.user.real_name.clone() } else { self.user.name.clone() };
-        let m = Msg {
-            from,
-            from_num: self.unum,
-            to,
-            subject,
-            date: now(),
-            body,
-            anon,
-            alias,
-            reply_to: reply.map_or(0, |m| m.id),
-            ..Msg::default()
-        };
+        let m = Msg { from, from_num: self.unum, to, subject, date: now(), body, anon, alias, reply_to: reply.map_or(0, |m| m.id), ..Msg::default() };
         self.store_post(&board, m)?;
         self.sprint(&format!("|U1Message posted on |U3{}|U1.", board.name))
     }
@@ -750,7 +749,8 @@ impl Session {
         }
         self.sprompt("|U1: |U3")?;
         let s = self.input(78)?;
-        let users: Vec<(usize, crate::db::User)> = self.sh.db().users.iter().cloned().enumerate().map(|(i, u)| (i + 1, u)).filter(|(_, u)| !u.deleted).collect();
+        let users: Vec<(usize, crate::db::User)> =
+            self.sh.db().users.iter().cloned().enumerate().map(|(i, u)| (i + 1, u)).filter(|(_, u)| !u.deleted).collect();
         let mut to: Vec<(usize, String)> = Vec::new();
         match s.to_uppercase().as_str() {
             "" => return Ok(()),

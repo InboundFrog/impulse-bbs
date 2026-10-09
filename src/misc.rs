@@ -51,9 +51,10 @@ impl Session {
 
     fn ask_minutes(&mut self, given: &str, prompt: String) -> io::Result<Option<i64>> {
         if let Ok(n) = given.trim().parse::<i64>()
-            && n != 0 {
-                return Ok(Some(n));
-            }
+            && n != 0
+        {
+            return Ok(Some(n));
+        }
         self.sprompt(&prompt)?;
         match self.input(5)?.parse::<i64>() {
             Ok(n) if n > 0 => Ok(Some(n)),
@@ -103,14 +104,7 @@ impl Session {
         }
         self.tmpl("BBSLIST.TOP", &[], "|NL|U2BBS Name                       Phone        Speed Software SysOp")?;
         for b in list {
-            let vars = [
-                ("BN", b.name),
-                ("SP", b.speed),
-                ("CM", b.comment),
-                ("PH", b.phone),
-                ("SY", b.sysop),
-                ("TY", b.soft),
-            ];
+            let vars = [("BN", b.name), ("SP", b.speed), ("CM", b.comment), ("PH", b.phone), ("SY", b.sysop), ("TY", b.soft)];
             self.tmpl("BBSLIST.MID", &vars, "|U3%BN |U1%PH |U2%SP |U1%TY |U3%SY|NL       |U1%CM")?;
         }
         self.tmpl("BBSLIST.BOT", &[], "")?;
