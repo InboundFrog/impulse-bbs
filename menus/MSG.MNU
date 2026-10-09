@@ -1,0 +1,87 @@
+|U4Message Menu
+
+
+MSG
+
+|NL|U2[|U3|CM|U2] |U4Messages|U2: |U3
+
+
+MAIN
+0
+3
+9
+0
+1
+
+|U2[|U3R|U2] Read Messages
+|U2[|U3R|U2] Read Messages
+0
+0
+R
+
+MS
+
+
+|U2[|U3P|U2] Post a Message
+|U2[|U3P|U2] Post a Message
+0
+0
+P
+
+MP
+
+
+|U2[|U3N|U2] New Scan
+|U2[|U3N|U2] New Scan
+0
+0
+N
+
+MN
+
+
+|U2[|U3A|U2] Change Base
+|U2[|U3A|U2] Change Base
+0
+0
+A
+
+MA
+
+
+|U2[|U3]|U2] Next Base
+|U2[|U3]|U2] Next Base
+0
+0
+]
+
+MA
++
+
+|U2[|U3[|U2] Previous Base
+|U2[|U3[|U2] Previous Base
+0
+0
+[
+
+MA
+-
+
+|U2[|U3#|U2] Base by Number
+|U2[|U3#|U2] Base by Number
+0
+0
+#
+
+M#
+
+H
+|U2[|U3Q|U2] Quit to Main
+|U2[|U3Q|U2] Quit to Main
+0
+0
+Q
+
+-\
+
+

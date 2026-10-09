@@ -1,0 +1,37 @@
+# Impulse BBS configuration. Every setting is optional; these are the defaults
+# unless noted. Paths are relative to the directory you start impulse in.
+
+bbs_name = "Impulse BBS"
+sysop_name = "SysOp"
+listen = "0.0.0.0:2323"
+max_nodes = 8
+
+data_path = "data"     # users, messages, logs (created on first run)
+menu_path = "menus"    # *.MNU menu files (Impulse text format)
+text_path = "text"     # *.ANS / *.ASC display files
+
+start_menu = "MAIN"
+closed_system = false
+new_user_password = ""   # empty: anyone may sign up
+new_sl = 20
+new_dsl = 20
+new_ar = ""
+max_logon_tries = 4
+idle_timeout_minutes = 10
+minutes_per_day = 60
+sysop_acs = "s255"       # the first user created gets SL 255
+max_message_lines = 100
+
+[[boards]]
+name = "General"
+file = "general"
+post_acs = "s20"
+
+[[boards]]
+name = "SysOp Lounge"
+file = "sysop"
+acs = "s250"
+
+# [strings]  -- prompts, with |XX pipe colour/MCI codes. See src/config.rs.
+# enter_handle = "|NL|U1Handle or user number |U2(|U3new|U2)|U1: |U3"
+# pause = "|U2[|U3pause|U2]"

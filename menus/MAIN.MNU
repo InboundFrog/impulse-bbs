@@ -1,0 +1,177 @@
+|U4Main Menu
+
+
+MAIN
+
+|NL|U2[|U3|TL|U2 mins] |U4|NM|U2: |U3
+
+
+MAIN
+0
+3
+9
+0
+1
+
+|U2[|U3M|U2] Message Bases
+|U2[|U3M|U2] Message Bases
+0
+0
+M
+
+-/
+MSG
+
+|U2[|U3E|U2] Send E-mail
+|U2[|U3E|U2] Send E-mail
+0
+0
+E
+
+ME
+
+
+|U2[|U3R|U2] Read E-mail
+|U2[|U3R|U2] Read E-mail
+0
+0
+R
+
+MM
+
+
+|U2[|U3A|U2] Read AutoMessage
+|U2[|U3A|U2] Read AutoMessage
+0
+0
+A
+
+UR
+
+
+|U2[|U3W|U2] Write AutoMessage
+|U2[|U3W|U2] Write AutoMessage
+0
+0
+W
+s20
+UW
+
+
+|U2[|U3O|U2] Oneliners
+|U2[|U3O|U2] Oneliners
+0
+0
+O
+
+OL
+
+
+|U2[|U3+|U2] Add a Rumor
+|U2[|U3+|U2] Add a Rumor
+0
+0
++
+s20
+RA
+
+
+|U2[|U3-|U2] List Rumors
+|U2[|U3-|U2] List Rumors
+0
+0
+-
+
+RL
+
+
+|U2[|U3L|U2] Last Callers
+|U2[|U3L|U2] Last Callers
+0
+0
+L
+
+XC
+
+
+|U2[|U3U|U2] User List
+|U2[|U3U|U2] User List
+0
+0
+U
+
+XU
+
+
+|U2[|U3/W|U2] Who's Online
+|U2[|U3/W|U2] Who's Online
+0
+0
+/W
+
+NW
+
+
+|U2[|U3Y|U2] Your Info
+|U2[|U3Y|U2] Your Info
+0
+0
+Y
+
+OY
+
+
+|U2[|U3K|U2] Configure Account
+|U2[|U3K|U2] Configure Account
+0
+0
+K
+
+OK
+
+
+|U2[|U3C|U2] Chat with SysOp
+|U2[|U3C|U2] Chat with SysOp
+0
+0
+C
+
+OC
+
+
+|U2[|U3I|U2] System Info
+|U2[|U3I|U2] System Info
+0
+0
+I
+
+OI
+
+
+|U2[|U3G|U2] Goodbye
+|U2[|U3G|U2] Goodbye
+0
+0
+G
+
+HC
+|U1Log off now? 
+
+|U2[|U3/G|U2] Hang up now
+|U2[|U3/G|U2] Hang up now
+0
+0
+/G
+
+HI
+
+
+
+
+0
+0
+FIRSTCMD
+
+RR
+
+
