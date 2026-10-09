@@ -61,6 +61,7 @@ pub struct Config {
     pub fbases: Vec<FBase>,
     /// External transfer protocols (PROTOCOL.DAT).
     pub protocols: Vec<Protocol>,
+    pub events: Vec<Event>,
     /// Files and K a user may download per file / K uploaded (0 = no ratio).
     pub dl_ratio: u32,
     pub dlk_ratio: u32,
@@ -109,6 +110,24 @@ pub struct Protocol {
     pub ul_cmd: String,
     /// Can send several files at once.
     pub batch: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[serde(default)]
+pub struct Event {
+    pub active: bool,
+    pub description: String,
+    /// A: only `data` ACS may log on during the window; D/E: run `data` as a command.
+    pub kind: String,
+    pub data: String,
+    /// "HH:MM"
+    pub time: String,
+    /// Minutes; how long an `A` window lasts.
+    pub duration: u32,
+    /// Weekdays, 0 = Sunday; empty = every day.
+    pub days: Vec<u8>,
+    /// Run monthly on this day instead, 0 = not monthly.
+    pub day_of_month: u8,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -230,6 +249,7 @@ impl Default for Config {
                 Protocol { key: "Y".into(), name: "Ymodem".into(), dl_cmd: "sz -b --ymodem %F".into(), ul_cmd: "rz -b --ymodem".into(), batch: true, ..Protocol::default() },
                 Protocol { key: "X".into(), name: "Xmodem".into(), dl_cmd: "sz -b --xmodem %F".into(), ul_cmd: String::new(), ..Protocol::default() },
             ],
+            events: Vec::new(),
             dl_ratio: 0,
             dlk_ratio: 0,
             use_file_points: false,
@@ -297,5 +317,5 @@ impl Config {
 /// Entry templates for the list settings, for the configuration editor.
 pub fn templates() -> Vec<(String, serde_json::Value)> {
     use crate::edit::tmpl;
-    vec![tmpl::<Board>("boards"), tmpl::<FBase>("fbases"), tmpl::<Protocol>("protocols"), tmpl::<Conf>("msg_confs"), tmpl::<Conf>("file_confs")]
+    vec![tmpl::<Board>("boards"), tmpl::<FBase>("fbases"), tmpl::<Protocol>("protocols"), tmpl::<Conf>("msg_confs"), tmpl::<Conf>("file_confs"), tmpl::<Event>("events")]
 }

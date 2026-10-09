@@ -5,7 +5,7 @@ use crate::config::Config;
 use crate::db::{self, Db, LastCaller, Online, User};
 use crate::menu::{self, Command, Menu};
 use crate::term::{self, Term};
-use crate::acs;
+use crate::{acs, events};
 use chrono::{Datelike, Local, NaiveDate, Timelike};
 use std::collections::HashMap;
 use std::io;
@@ -88,6 +88,8 @@ pub struct Session {
     pub pkey: Option<char>,
     /// Set by O1-O3 on the matrix menu (tshuttlelogon).
     pub shuttle: u8,
+    /// Minutes left are capped so the caller is off before an event.
+    chop: Option<Instant>,
     help: bool,
     on_since: Instant,
     lines: u16,
@@ -157,6 +159,7 @@ pub fn run(sh: Arc<Shared>, stream: TcpStream, node: usize) {
         pct: false,
         pkey: None,
         shuttle: 0,
+        chop: None,
         mconf: 0,
         fconf: 0,
         board_pw: Vec::new(),
@@ -247,7 +250,11 @@ impl Session {
     }
 
     pub fn time_left_min(&self) -> i64 {
-        self.user.minutes_today - (self.on_since.elapsed().as_secs() / 60) as i64
+        let left = self.user.minutes_today - (self.on_since.elapsed().as_secs() / 60) as i64;
+        match self.chop {
+            Some(t) => left.min(t.saturating_duration_since(Instant::now()).as_secs() as i64 / 60),
+            None => left,
+        }
     }
 
     fn check_time(&mut self) -> io::Result<()> {
@@ -859,6 +866,7 @@ impl Session {
             }
             return Err(hangup());
         }
+        self.event_checks()?;
         self.user.on_today += 1;
         self.user.logons += 1;
         self.new_date = std::mem::replace(&mut self.user.last_on, today);
@@ -891,6 +899,30 @@ impl Session {
         if waiting > 0 && self.pynq(&format!("|NL|U1You have |U3{waiting}|U1 letter(s) waiting. Read them now? "), true)? {
             self.read_mail()?;
         }
+        Ok(())
+    }
+
+    /// Restricted-time `A` events and the event time chop (getacsuser, findchoptime).
+    fn event_checks(&mut self) -> io::Result<()> {
+        let now = Local::now().naive_local();
+        let cfg = self.cfg();
+        for (i, e) in cfg.events.iter().enumerate() {
+            if e.kind == "A" && events::in_window(e, now) && !self.acs(&e.data) {
+                if !self.printf(&format!("acsea{}", i + 1))? {
+                    self.sprint("|NL|12Restricted time zone.|NLOnly certain users allowed online at this time.")?;
+                }
+                self.log(&format!("Refused during event \"{}\"", e.description));
+                return Err(hangup());
+            }
+        }
+        let left = self.time_left_min();
+        let soon = cfg.events.iter().filter(|e| e.active && e.kind != "A").filter_map(|e| events::minutes_until(e, now, left)).min();
+        if let Some(m) = soon
+            && !self.is_sysop() {
+                let m = (m - 1).max(1);
+                self.chop = Some(Instant::now() + Duration::from_secs(m as u64 * 60));
+                self.sprint(&format!("|NL|U5- System event approaching - online time adjusted to |U3{m}|U5 minutes."))?;
+            }
         Ok(())
     }
 

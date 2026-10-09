@@ -6,6 +6,7 @@ mod config;
 mod db;
 mod doors;
 mod edit;
+mod events;
 mod files;
 mod menu;
 mod misc;
@@ -38,6 +39,7 @@ fn main() {
     });
     println!("Impulse v{} - {} - listening on {}", env!("CARGO_PKG_VERSION"), cfg.bbs_name, cfg.listen);
     let sh = Arc::new(Shared { cfg: RwLock::new(Arc::new(cfg)), cfg_path: path, db: Mutex::new(db) });
+    events::spawn(sh.clone());
     for stream in listener.incoming().flatten() {
         // Claim the lowest free node number, as MULTINOD.PAS assigns nodes.
         let node = {
