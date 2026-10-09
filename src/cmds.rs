@@ -99,6 +99,10 @@ impl Session {
             ('R', 'D') => self.delete_rumor()?,
             ('S', 'P') => self.pause()?,
             ('S', 'C') => self.cls()?,
+            ('C', 'M') => self.change_conf(false, data)?,
+            ('C', 'F') => self.change_conf(true, data)?,
+            ('C', 'E') => self.conf_editor()?,
+            ('C', 'N') => self.newscan()?,
             ('M', 'A') => self.change_board(data)?,
             ('M', 'P') => self.post(self.board, None)?,
             ('M', 'S') => {

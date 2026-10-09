@@ -67,6 +67,9 @@ pub struct Session {
     pub menu_name: String,
     menu_stack: Vec<String>,
     pub board: usize,
+    /// Current message and file conference, 0 = all.
+    pub mconf: usize,
+    pub fconf: usize,
     /// Board files whose password was given this call.
     pub board_pw: Vec<String>,
     /// `%XX` template variables (sysMciSet).
@@ -145,6 +148,8 @@ pub fn run(sh: Arc<Shared>, stream: TcpStream, node: usize) {
         hdr: String::new(),
         pct: false,
         pkey: None,
+        mconf: 0,
+        fconf: 0,
         board_pw: Vec::new(),
         help: false,
         on_since: Instant::now(),
@@ -251,7 +256,7 @@ impl Session {
             let ch = arg.chars().next().unwrap_or(' ');
             match c {
                 'A' => age(&u.birthday) >= n,
-                'C' => false, // conferences: not implemented in Impulse 7.1 either
+                'C' => self.mconf as i64 == n,
                 'D' => u.dsl as i64 >= n,
                 'F' => u.ar.contains(ch),
                 'G' => u.sex.starts_with(ch),

@@ -46,7 +46,17 @@ pub struct Config {
     pub auto_ar: String,
     pub auto_ac: String,
     pub boards: Vec<Board>,
+    /// Message and file conferences (MCONF.DAT / FCONF.DAT), numbered from 1.
+    pub msg_confs: Vec<Conf>,
+    pub file_confs: Vec<Conf>,
     pub strings: Strings,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(default)]
+pub struct Conf {
+    pub name: String,
+    pub acs: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -65,6 +75,8 @@ pub struct Board {
     pub password: String,
     /// Posts are made under real names.
     pub real_names: bool,
+    /// Conference number; 0 shows the base in every conference.
+    pub conf: usize,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Default, PartialEq)]
@@ -137,6 +149,8 @@ impl Default for Config {
             anon_pub_post: "s250".into(),
             anon_priv_post: "s250".into(),
             boards: vec![Board { name: "General".into(), file: "general".into(), post_acs: "s20".into(), ..Board::default() }],
+            msg_confs: Vec::new(),
+            file_confs: Vec::new(),
             strings: Strings::default(),
         }
     }
@@ -190,5 +204,6 @@ impl Config {
 
 /// Entry templates for the list settings, for the configuration editor.
 pub fn templates() -> Vec<(String, serde_json::Value)> {
-    vec![crate::edit::tmpl::<Board>("boards")]
+    use crate::edit::tmpl;
+    vec![tmpl::<Board>("boards"), tmpl::<Conf>("msg_confs"), tmpl::<Conf>("file_confs")]
 }

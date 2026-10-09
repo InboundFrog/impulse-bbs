@@ -37,7 +37,74 @@ impl Session {
     /// Board indexes this user may read.
     pub fn boards(&self) -> Vec<usize> {
         let b = &self.cfg().boards;
-        (0..b.len()).filter(|&i| self.acs(&b[i].acs)).collect()
+        (0..b.len()).filter(|&i| self.acs(&b[i].acs) && (self.mconf == 0 || b[i].conf == 0 || b[i].conf == self.mconf)).collect()
+    }
+
+    // ---- conferences (CONF.PAS) ---------------------------------------------
+
+    /// `CM` / `CF`: join a message or file conference; data `A` = all, or a number.
+    pub fn change_conf(&mut self, file: bool, data: &str) -> io::Result<()> {
+        let confs = if file { self.cfg().file_confs.clone() } else { self.cfg().msg_confs.clone() };
+        let n = match data.trim().to_uppercase().as_str() {
+            "A" => 0,
+            s if s.parse::<usize>().is_ok() => s.parse().unwrap_or(0),
+            _ => {
+                self.write_hdr(if file { "File Confs" } else { "Msg Confs" })?;
+                loop {
+                    self.sprompt("|NL|U1Join which conference |U2(|U3?|U2=list, Enter=all)|U1: |U3")?;
+                    let s = self.input(2)?;
+                    if s != "?" {
+                        break s.parse().unwrap_or(0);
+                    }
+                    self.sprint("|U9--------------------")?;
+                    for (i, c) in confs.iter().enumerate() {
+                        self.sprompt(&format!("|U0{} - ", i + 1))?;
+                        self.out(&c.name)?;
+                        self.nl()?;
+                    }
+                    self.sprint("|U00 - All Conferences|NL|U9--------------------")?;
+                }
+            }
+        };
+        let (name, acs) = match n {
+            0 => ("All Conferences".to_string(), String::new()),
+            _ => match confs.get(n - 1) {
+                Some(c) => (c.name.clone(), c.acs.clone()),
+                None => return self.sprint("|NL|12No such conference."),
+            },
+        };
+        if !self.acs(&acs) {
+            return self.sprint("|NL|12You do not have ACS for that Conference");
+        }
+        if file {
+            self.fconf = n;
+        } else {
+            self.mconf = n;
+            if let Some(&b) = self.boards().first() {
+                self.board = b;
+            }
+        }
+        self.sprompt("|NL|U1Joined |U3")?;
+        self.out(&name)?;
+        self.nl()
+    }
+
+    /// `CE`: edit the conference lists.
+    pub fn conf_editor(&mut self) -> io::Result<()> {
+        if !self.is_sysop() {
+            return Ok(());
+        }
+        self.sprompt("|NL|U1Edit Message or File Conf? |U2[|U3M|U2/|U3F|U2]|U1: |U3")?;
+        let file = match self.onek("MFQ\r")? {
+            'M' => false,
+            'F' => true,
+            _ => return Ok(()),
+        };
+        let confs = if file { self.cfg().file_confs.clone() } else { self.cfg().msg_confs.clone() };
+        if let Some(new) = self.edit_vec(if file { "File conferences" } else { "Msg conferences" }, &confs, &[])? {
+            self.sh.edit_cfg(|c| if file { c.file_confs = new } else { c.msg_confs = new })?;
+        }
+        Ok(())
     }
 
     /// Asks for the base password once per call.
