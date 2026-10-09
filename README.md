@@ -13,63 +13,98 @@ Use a terminal that renders CP437 + ANSI (SyncTERM, NetRunner, or
 `telnet` in a UTF-8 terminal for a rough look). Bytes are passed through
 untouched, so original `.ANS` art displays as intended.
 
+External tools, when present: `sz`/`rz` (lrzsz) for the default transfer
+protocols, `zip`/`unzip` for QWK packets, archive viewing, FILE_ID.DIZ and
+upload checks.
+
 ## What carries over from Impulse
 
-| Impulse (Pascal)                                     | Here                     |
-|------------------------------------------------------|--------------------------|
-| `IMP.PAS` main loop, `MENUS*.PAS` command dispatch   | `session.rs`, `cmds.rs`  |
-| `.MNU` menus (text format read by `MNUCONV.PAS`)     | `menu.rs`, `menus/`      |
-| `aacs1` ACS strings (`s20fA\|!rP`, `()`, `!`, `\|`)    | `acs.rs`                 |
-| `OUTPUT.PAS` pipe codes `\|00-\|15 \|B0 \|U0-9 \|UN \|TL`… | `Session::sprompt`       |
-| `printf` display files, `NAME.1-9` random screens    | `Session::printf`        |
-| top/mid/bot templates with `%XX` vars (`sysMciSet`)  | `Session::tmpl`          |
-| `getc`/`setc` DOS attribute → ANSI                   | `term.rs`                |
-| `STATUS.DAT` settings + string table                 | `impulse.toml`           |
-| `USER.LST`, `LASTON.DAT`, message bases              | `data/*.json`            |
+| Impulse (Pascal)                                     | Here                          |
+|------------------------------------------------------|-------------------------------|
+| `IMP.PAS` main loop, `MENUS*.PAS` command dispatch   | `session.rs`, `cmds.rs`       |
+| `.MNU` menus (text format read by `MNUCONV.PAS`)     | `menu.rs`, `menus/`           |
+| `aacs1` ACS strings (`s20fA\|!rP`, `()`, `!`, `\|`)    | `acs.rs`                      |
+| `OUTPUT.PAS` pipe codes, `printf` display files      | `session.rs`                  |
+| `getc`/`setc`, FOSSIL/COM layer                      | `term.rs`                     |
+| `STATUS.DAT` settings + string table                 | `impulse.toml`, `config.rs`   |
+| `USER.LST`, message bases, `*.DIR` file lists        | `data/*.json`, `db.rs`        |
+| `MAIL*.PAS` messages and e-mail, `CONF.PAS`          | `msgs.rs`                     |
+| `FILE*.PAS` file bases, transfers, batch, `ULCHECK`  | `files.rs`                    |
+| `ANSIEDIT.PAS` full-screen editor                    | `fse.rs`                      |
+| `DOORS.PAS`, `EXEC.PAS`                              | `doors.rs`                    |
+| `MULTINOD.PAS` node messages and multinode chat      | `multinode.rs`                |
+| `SCRIPT.PAS` / `ISL*.PAS` scripting                  | `script.rs`                   |
+| `SYSOP*.PAS` editors, `IMPDOS.PAS`                   | `sysop.rs`, `edit.rs`         |
+| `NUV.PAS`, `RUMORS.PAS`, `TIMEBANK.PAS`, `MISC*.PAS` | `nuv.rs`, `misc.rs`           |
+| events (`EVENTS.DAT`), time chop                     | `events.rs`                   |
+| QWK (`MQ`/`MR`)                                      | `qwk.rs`                      |
+| `WFCMENU.PAS`                                        | `wfc.rs` (stdin console)      |
 
 Menus behave the way they did: hot keys, `/X` and `//LONG` commands,
-`FIRSTCMD`/`EVERYTIME`/`ENTER`, `global.mnu` merged in, several commands
-chained on one key, and the `-^` / `-/` / `-\` goto/gosub/return stack with
-`MENU;C;CMD` data. The original sample menu, `tests/legacy-main.mnu`, parses
-unchanged.
+`FIRSTCMD`/`EVERYTIME`/`ENTER`, several commands chained on one key, the
+`-^` / `-/` / `-\` goto/gosub/return stack with `MENU;C;CMD` data, and
+pulldown (`P` flag) menus drawn as a lightbar from each command's short
+description and X/Y. The original sample menu, `tests/legacy-main.mnu`,
+parses unchanged.
 
-**Commands so far:** menu navigation (`-^ -/ -\`), `-F -L -S -C -$`, logoff
-(`HC HI HM`), `OI OY OC OL OK/OP`, `XC XU XS XH XL XA`, automessage (`UR UW`),
-rumors (`RR RA RL RD`), `SP SC`, messages (`MA MP MS MN M#`), e-mail (`ME MM`),
-who's online (`NW`). Logon, new-user signup, daily time limits, idle timeout
-and multiple nodes all work.
+Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 
-Any other command prints "not implemented yet" and is noted in
-`data/sysop.log`.
+### Commands
+
+- **Menus/display:** `-^ -/ -\` `-F -L -P -S -C -$ -; -W -T` `XY` `SP SC`
+- **Logoff/info:** `HC HI HM` `OI OY OC OL OK/OP OA OB OS` `O1-O3` (matrix logon)
+  `XC XU XS XH XL XA`
+- **Messages:** `MA MP MS MN M# MZ M$ MJ MK ML ME MM` `CM CF CE` `MQ MR` (QWK)
+- **Files:** `FA FL FS FF FN FP FD FU FV FR FY FK FZ F#` and batch `BL BR BC BD BU B?`
+- **Doors/scripts:** `DC DD DG DS DW D-` (CHAIN.TXT, DORINFO1.DEF, DOOR.SYS…),
+  `ID` (IMPULSE.IDF), `IS` (ISL scripts, plain or compiled)
+- **Multinode:** `NW NS NC`, SysOp paging across nodes
+- **Misc:** automessage `UR UW UA`, rumors `RR RA RL RD`, time bank `UD UL`,
+  new-user voting `-N`, bulletins, BBS list `-V -A`, questionnaires `-Q -R`
+- **SysOp (`%x`):** user, board, file base, config, menu and conference
+  editors, become-user, logs, daily stats, mini-DOS, read all mail, file
+  maintenance `%1-%9 %$ %%`
+
+## Running a system
+
+- **Console:** the server reads commands on stdin: `W` who's online, `S`
+  today's stats, `M node text` node message (0 = all), `K node` hang up,
+  `L [n]` log tail, `Q` shut down. The editors run in a session, so log on
+  over telnet for those.
+- **Importing a 7.1 system:** `impulse import <dir with USER.LST etc.> [config]`
+  into a fresh `data_path`. Users (numbers, stats, flags, colours), message
+  and file bases and `*.DIR` file lists come across; the config is backed up
+  to `<config>.bak`. Check the file paths afterwards: they came from DOS.
+- **Events:** `[[events]]` in the config: ACS-restricted logon windows, timed
+  shell commands, and time chop before an event.
 
 ## Deliberate differences
 
 - Telnet replaces modems and FOSSIL, and there's one thread per node.
-  There's no local WFC/sysop console, so log in over telnet.
-- Passwords are stored as Argon2 hashes and are case-sensitive. Impulse
-  stored them in plain text, upper-cased.
-- Data is JSON, not Pascal binary records. Original `USER.LST`/`*.BRD`
-  files can't be imported yet.
+- Passwords are stored as Argon2 hashes and are case-sensitive; logons also
+  try the password in capitals, which is how Impulse stored them, so
+  imported users keep working.
+- Data is JSON, not Pascal binary records.
 - Menus without a help file get a generated command list. Impulse 7.1 had
-  dropped its generic menus.
+  dropped its generic menus. Menu flag `G` leaves out `GLOBAL.MNU`.
+- The pulldown look is ours: 7.1's `DoPulls` isn't in the released source.
+- The full-screen editor has a built-in header; `FSEHEAD`/`FSEHELP` aren't read.
 
-## Not done yet (the original units to port)
+## Not carried over
 
-File areas and transfers (`FILE*.PAS`, needs zmodem), doors (`DOORS.PAS`,
-DOOR.SYS/DORINFO), the sysop editors (`SYSOP*.PAS`: user/menu/board editors),
-new user voting (`NUV.PAS`), the time bank, conferences, QWK, the full-screen
-editor and ANSI editor, the ISL scripting language (`SCRIPT.PAS`), multinode
-chat and node messages, bulletins, BBS list, pulldown menus, and importing the
-original binary data files.
+Messages from `*.BRD`/`*.MIX` (import), verbose file descriptions, LZH/ARJ
+viewers, the local sysop screen and scrollback, the installer and the DOS
+utilities (`MAKE*.PAS`, `LADLE`).
 
 ## Layout
 
 ```
 impulse.toml   configuration
-menus/         *.MNU menus (MAIN, MSG)
+menus/         *.MNU menus (MAIN, MSG, FILE, SYSOP)
 text/          display files (WELCOME, LOGON, LOGOFF); add your own .ANS/.ASC
-data/          created at runtime: users.json, system.json, msgs/, sysop.log
+data/          created at runtime: users.json, system.json, msgs/, files/, sysop.log
 ```
 
-Tests: `cargo test` covers the ACS evaluator, the colour translation, parsing
-the legacy menu and password hashing.
+Tests: `cargo test` covers the ACS evaluator, colours and telnet escaping,
+the legacy menu, passwords, wildcards, door macros, ISL, events, QWK,
+the editor buffer and the binary import layouts.
