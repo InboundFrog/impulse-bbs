@@ -108,12 +108,47 @@ pub struct LastCaller {
     pub when: String,
 }
 
+/// One day of system usage (zlogrec in ZLOG.DAT).
+#[derive(Serialize, Deserialize, Default, Clone)]
+#[serde(default)]
+pub struct Zlog {
+    pub date: String,
+    pub active: i64,
+    pub calls: u32,
+    pub new_users: u32,
+    pub pub_posts: u32,
+    pub priv_posts: u32,
+    pub feedback: u32,
+    pub uploads: u32,
+    pub downloads: u32,
+    pub uk: u64,
+    pub dk: u64,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct SysState {
     pub callers: u64,
     pub next_msg_id: u64,
     pub last_callers: Vec<LastCaller>,
+    pub today: Zlog,
+    /// Previous days, newest first.
+    pub history: Vec<Zlog>,
+}
+
+impl SysState {
+    /// Today's statistics, starting a new day when the date has changed.
+    pub fn zlog(&mut self) -> &mut Zlog {
+        let d = chrono::Local::now().format("%Y-%m-%d").to_string();
+        if self.today.date != d {
+            if !self.today.date.is_empty() {
+                self.history.insert(0, std::mem::take(&mut self.today));
+                self.history.truncate(90);
+            }
+            self.today = Zlog { date: d, ..Zlog::default() };
+        }
+        &mut self.today
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]

@@ -414,6 +414,10 @@ impl Session {
             "TL" => self.time_left_min().max(0).to_string(),
             "TT" => u.minutes_today.to_string(),
             "CT" => self.sh.db().sys.callers.to_string(),
+            "TC" => self.sh.db().sys.zlog().calls.to_string(),
+            "NT" => self.sh.db().sys.zlog().new_users.to_string(),
+            "NP" | "TP" => self.sh.db().sys.zlog().pub_posts.to_string(),
+            "FT" | "NF" => self.sh.db().sys.zlog().uploads.to_string(),
             "LC" => self.sh.db().sys.last_callers.first().map(|l| l.name.clone()).unwrap_or_default(),
             "CM" => cfg.boards.get(self.board).map(|b| b.name.clone()).unwrap_or_default(),
             "NM" => strip_pipes(&self.menu.title[0]),
@@ -707,6 +711,7 @@ impl Session {
             // The first account is the SysOp, like Impulse's install.
             (u.sl, u.dsl) = if db.users.is_empty() { (255, 255) } else { (cfg.new_sl, cfg.new_dsl) };
             db.users.push(u.clone());
+            db.sys.zlog().new_users += 1;
             db.save()?;
             db.users.len()
         };
@@ -737,6 +742,7 @@ impl Session {
         {
             let mut db = self.sh.db();
             db.sys.callers += 1;
+            db.sys.zlog().calls += 1;
             let lc = LastCaller {
                 caller_num: db.sys.callers,
                 name: self.user.name.clone(),
@@ -761,6 +767,7 @@ impl Session {
             let used = (self.on_since.elapsed().as_secs() / 60) as i64;
             self.user.minutes_today = (self.user.minutes_today - used).max(0);
             self.user.total_minutes += used;
+            self.sh.db().sys.zlog().active += used;
             self.save_user();
             self.log(&format!("Logoff after {used} min"));
         }

@@ -174,7 +174,11 @@ impl Session {
         let max = self.cfg().max_message_lines;
         let Some(body) = self.editor(max)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
         let m = Msg { id: 0, from: self.user.name.clone(), from_num: self.unum, to, to_num: 0, subject, date: now(), body };
-        self.sh.db().post(&board.file, m)?;
+        {
+            let mut db = self.sh.db();
+            db.sys.zlog().pub_posts += 1;
+            db.post(&board.file, m)?;
+        }
         self.user.posts += 1;
         self.save_user();
         self.log(&format!("Posted on {}", board.name));
@@ -207,7 +211,15 @@ impl Session {
         let max = self.cfg().max_message_lines;
         let Some(body) = self.editor(max)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
         let m = Msg { id: 0, from: self.user.name.clone(), from_num: self.unum, to, to_num: n, subject, date: now(), body };
-        self.sh.db().post("email", m)?;
+        {
+            let mut db = self.sh.db();
+            let z = db.sys.zlog();
+            z.priv_posts += 1;
+            if n == 1 {
+                z.feedback += 1;
+            }
+            db.post("email", m)?;
+        }
         self.user.emails += 1;
         self.save_user();
         self.sprint("|U1Mail sent.")
