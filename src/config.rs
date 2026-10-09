@@ -25,6 +25,8 @@ pub struct Config {
     pub minutes_per_day: i64,
     /// Users matching this ACS are SysOps: no time limit, sysop-only commands.
     pub sysop_acs: String,
+    /// Asked before every `%` SysOp command when set (checkpw).
+    pub sysop_password: String,
     pub max_message_lines: usize,
     /// Most minutes a user may keep in the time bank (0 disables it).
     pub max_time_bank: i64,
@@ -88,6 +90,7 @@ impl Default for Config {
             idle_timeout_minutes: 10,
             minutes_per_day: 60,
             sysop_acs: "s255".into(),
+            sysop_password: String::new(),
             max_message_lines: 100,
             max_time_bank: 60,
             bulletin_prefix: "bullet".into(),
@@ -140,4 +143,9 @@ impl Config {
         std::fs::write(&tmp, s)?;
         std::fs::rename(tmp, path)
     }
+}
+
+/// Entry templates for the list settings, for the configuration editor.
+pub fn templates() -> Vec<(String, serde_json::Value)> {
+    vec![crate::edit::tmpl::<Board>("boards")]
 }
