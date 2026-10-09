@@ -16,6 +16,7 @@ new_user_password = ""   # empty: anyone may sign up
 new_sl = 20
 new_dsl = 20
 new_ar = ""
+new_user_order = ["real_name", "city", "phone", "birthday", "sex", "ansi"]  # NUORDER; drop any to skip it
 max_logon_tries = 4
 idle_timeout_minutes = 10
 minutes_per_day = 60

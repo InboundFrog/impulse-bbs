@@ -813,18 +813,25 @@ impl Session {
             break;
         }
         u.name = name;
-        u.real_name = self.ask("|U1Real name: |U3", 36)?;
-        u.city_state = self.ask("|U1City, State: |U3", 30)?;
-        u.phone = self.ask("|U1Phone number: |U3", 12)?;
-        loop {
-            u.birthday = self.ask("|U1Birthday (MM/DD/YYYY): |U3", 10)?;
-            if NaiveDate::parse_from_str(&u.birthday, "%m/%d/%Y").is_ok() {
-                break;
+        for q in &cfg.new_user_order {
+            match q.as_str() {
+                "real_name" => u.real_name = self.ask("|U1Real name: |U3", 36)?,
+                "city" => u.city_state = self.ask("|U1City, State: |U3", 30)?,
+                "phone" => u.phone = self.ask("|U1Phone number: |U3", 12)?,
+                "birthday" => loop {
+                    u.birthday = self.ask("|U1Birthday (MM/DD/YYYY): |U3", 10)?;
+                    if NaiveDate::parse_from_str(&u.birthday, "%m/%d/%Y").is_ok() {
+                        break;
+                    }
+                },
+                "sex" => {
+                    self.sprompt("|U1Sex (M/F): |U3")?;
+                    u.sex = self.onek("MF")?.to_string();
+                }
+                "ansi" => u.ansi = self.pynq("|U1Does your terminal support ANSI color? ", true)?,
+                _ => {}
             }
         }
-        self.sprompt("|U1Sex (M/F): |U3")?;
-        u.sex = self.onek("MF")?.to_string();
-        u.ansi = self.pynq("|U1Does your terminal support ANSI color? ", true)?;
         u.fse = u.ansi;
         loop {
             self.sprompt("|U1Choose a password (4+ chars): |U3")?;

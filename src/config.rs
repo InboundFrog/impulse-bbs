@@ -57,6 +57,9 @@ pub struct Config {
     pub use_nuv: bool,
     pub nuv_yes: u32,
     pub nuv_no: u32,
+    /// New-user questions in the order asked (NUORDER.DAT, MAKENUO.PAS):
+    /// real_name city phone birthday sex ansi.
+    pub new_user_order: Vec<String>,
     pub boards: Vec<Board>,
     pub fbases: Vec<FBase>,
     /// External transfer protocols (PROTOCOL.DAT).
@@ -245,6 +248,7 @@ impl Default for Config {
             use_nuv: false,
             nuv_yes: 5,
             nuv_no: 3,
+            new_user_order: ["real_name", "city", "phone", "birthday", "sex", "ansi"].map(String::from).to_vec(),
             msop_acs: "s250".into(),
             anon_pub_read: "s250".into(),
             anon_priv_read: "s250".into(),
