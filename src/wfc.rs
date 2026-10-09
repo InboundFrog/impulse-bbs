@@ -10,6 +10,8 @@ const HELP: &str = "  W           who's online
   S           today's statistics
   M node text send a node message (node 0 = everyone)
   K node      hang up a node
+  V [node]    watch a node live (V alone stops)
+  B node [n]  a node's last n lines of scrollback (default 24)
   L [n]       last n lines of the SysOp log (default 20)
   Q           shut down";
 
@@ -66,6 +68,24 @@ pub fn run(sh: &Shared, line: &str) -> Option<String> {
             Some(s) => {
                 let _ = s.shutdown(std::net::Shutdown::Both);
                 format!("Node {node} hung up.")
+            }
+            None => format!("Node {node} isn't online."),
+        },
+        "V" => {
+            for (n, o) in &db.online {
+                o.tap.lock().unwrap_or_else(|e| e.into_inner()).live = *n == node;
+            }
+            match db.online.get(&node) {
+                Some(_) => format!("Watching node {node}; V alone stops."),
+                None => "Not watching.".into(),
+            }
+        }
+        "B" => match db.online.get(&node) {
+            Some(o) => {
+                let n = text.parse().unwrap_or(24);
+                let back = crate::term::cp437(o.tap.lock().unwrap_or_else(|e| e.into_inner()).back.make_contiguous());
+                let lines: Vec<&str> = back.lines().collect();
+                lines[lines.len().saturating_sub(n)..].join("\n") + "\x1b[0m"
             }
             None => format!("Node {node} isn't online."),
         },

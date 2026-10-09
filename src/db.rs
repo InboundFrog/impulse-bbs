@@ -224,6 +224,7 @@ pub struct Online {
     pub forum: u8,
     /// The caller's socket, so the console can hang them up.
     pub sock: Option<std::net::TcpStream>,
+    pub tap: std::sync::Arc<std::sync::Mutex<crate::term::Tap>>,
 }
 
 pub struct Db {

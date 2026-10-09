@@ -8,6 +8,23 @@ use std::time::Duration;
 
 const IAC: u8 = 255;
 
+/// What the console sees of a node: the local screen (`V`) and the
+/// scrollback (SCRLBK.PAS, `B`).
+#[derive(Default)]
+pub struct Tap {
+    pub back: std::collections::VecDeque<u8>,
+    pub live: bool,
+}
+
+/// Scrollback kept per node, in bytes.
+const BACK: usize = 32 * 1024;
+
+/// CP437 bytes as Unicode, for showing a node on the console.
+pub fn cp437(b: &[u8]) -> String {
+    const HI: &str = "ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■\u{a0}";
+    b.iter().map(|&c| if c < 128 { c as char } else { HI.chars().nth(usize::from(c - 128)).unwrap_or('?') }).collect()
+}
+
 pub struct Term {
     s: TcpStream,
     buf: Vec<u8>,
@@ -18,13 +35,16 @@ pub struct Term {
     /// Current text attribute (DOS style: low nibble fg, high nibble bg, 0x80 blink).
     pub curco: u8,
     idle: Duration,
+    /// Output since the last flush, before telnet escaping, for `tap`.
+    raw: Vec<u8>,
+    pub tap: std::sync::Arc<std::sync::Mutex<Tap>>,
 }
 
 impl Term {
     pub fn new(s: TcpStream, idle: Duration) -> io::Result<Term> {
         s.set_read_timeout(Some(idle))?;
         s.set_nodelay(true)?;
-        let mut t = Term { s, buf: Vec::new(), last: 0, skip_lf: false, stuffed: Default::default(), curco: 7, idle };
+        let mut t = Term { s, buf: Vec::new(), last: 0, skip_lf: false, stuffed: Default::default(), curco: 7, idle, raw: Vec::new(), tap: Default::default() };
         // WILL ECHO + WILL SUPPRESS-GO-AHEAD: character mode, we do the echoing.
         t.buf.extend_from_slice(&[IAC, 251, 1, IAC, 251, 3]);
         Ok(t)
@@ -39,6 +59,7 @@ impl Term {
             self.buf.push(IAC);
         }
         self.buf.push(b);
+        self.raw.push(b);
         self.last = b;
     }
 
@@ -47,6 +68,16 @@ impl Term {
     }
 
     pub fn flush(&mut self) -> io::Result<()> {
+        if !self.raw.is_empty() {
+            let mut tap = self.tap.lock().unwrap_or_else(|e| e.into_inner());
+            if tap.live {
+                print!("{}", cp437(&self.raw));
+                let _ = io::stdout().flush();
+            }
+            tap.back.extend(self.raw.drain(..));
+            let over = tap.back.len().saturating_sub(BACK);
+            tap.back.drain(..over);
+        }
         if !self.buf.is_empty() {
             self.s.write_all(&self.buf)?;
             self.buf.clear();
@@ -305,6 +336,12 @@ pub fn ansi_color(cur: u8, c: u8) -> String {
 #[cfg(test)]
 mod tests {
     use super::ansi_color;
+
+    #[test]
+    fn cp437_table() {
+        assert_eq!(super::cp437(&[b'A', 0x80, 0xB3, 0xDB, 0xFE]), "AÇ│█■");
+        assert_eq!(super::cp437(&[0xFF]), "\u{a0}");
+    }
 
     #[test]
     fn telnet_escaping() {

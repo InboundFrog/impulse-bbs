@@ -135,13 +135,14 @@ pub fn strip_pipes(s: &str) -> String {
 pub fn run(sh: Arc<Shared>, stream: TcpStream, node: usize) {
     let peer = stream.peer_addr().map(|a| a.to_string()).unwrap_or_default();
     let idle = Duration::from_secs(sh.cfg().idle_timeout_minutes.max(1) * 60);
-    let t = match Term::new(stream, idle) {
+    let mut t = match Term::new(stream, idle) {
         Ok(t) => t,
         Err(_) => {
             sh.db().online.remove(&node);
             return;
         }
     };
+    t.tap = sh.db().online.get(&node).map(|o| o.tap.clone()).unwrap_or_default();
     let mut s = Session {
         sh,
         t,
