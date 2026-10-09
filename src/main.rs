@@ -4,10 +4,12 @@ mod acs;
 mod cmds;
 mod config;
 mod db;
+mod edit;
 mod menu;
 mod misc;
 mod msgs;
 mod session;
+mod sysop;
 mod term;
 
 use session::Shared;
@@ -37,7 +39,7 @@ fn main() {
             let mut db = sh.db();
             let node = (1..=sh.cfg().max_nodes).find(|n| !db.online.contains_key(n));
             if let Some(n) = node {
-                db.online.insert(n, db::Online { name: "Logging in".into(), doing: "Logon".into() });
+                db.online.insert(n, db::Online { name: "Logging in".into(), doing: "Logon".into(), ..Default::default() });
             }
             node
         };

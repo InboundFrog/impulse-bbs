@@ -51,6 +51,8 @@ pub struct User {
     pub file_points: i32,
     pub time_bank: i64,
     pub locked_out: bool,
+    /// Display file shown to a locked-out user.
+    pub locked_file: String,
     pub deleted: bool,
     pub last_board: usize,
     /// Highest message id read, per board file.
@@ -93,6 +95,7 @@ impl Default for User {
             file_points: 0,
             time_bank: 0,
             locked_out: false,
+            locked_file: String::new(),
             deleted: false,
             last_board: 0,
             last_read: BTreeMap::new(),
@@ -164,9 +167,13 @@ pub struct Msg {
     pub body: Vec<String>,
 }
 
+#[derive(Default)]
 pub struct Online {
     pub name: String,
     pub doing: String,
+    pub unum: usize,
+    /// Set when the SysOp edits this user; the session reloads the record.
+    pub reload: bool,
 }
 
 pub struct Db {

@@ -107,12 +107,35 @@ impl Session {
             ('M', 'M') => self.read_mail()?,
             ('M', '#') => self.sprint("|NL|U1Enter the number of the message base to change to it.")?,
             ('N', 'W') => self.whos_online()?,
-            _ => {
-                self.sprint("|NL|12Sorry, that command isn't implemented yet.")?;
-                self.log(&format!("Unimplemented command {cmd} {data}"));
+            ('%', _) => {
+                if !self.check_sysop_pw()? {
+                    return Ok(Flow::Next);
+                }
+                match c2 {
+                    'U' => self.user_editor()?,
+                    'B' => self.board_editor()?,
+                    'S' => self.config_editor()?,
+                    '#' => self.menu_editor()?,
+                    'C' => self.change_user()?,
+                    'L' => self.show_log()?,
+                    'Z' => self.show_zlog()?,
+                    'D' => self.mini_dos()?,
+                    '3' => self.read_all_mail()?,
+                    _ => self.no_cmd(cmd, data)?,
+                }
             }
+            _ => self.no_cmd(cmd, data)?,
         }
         Ok(Flow::Next)
+    }
+
+    /// Unknown command keys: logged for the SysOp, as MENUS.PAS does.
+    fn no_cmd(&mut self, cmd: &str, data: &str) -> io::Result<()> {
+        self.log(&format!("Invalid command: cmdkeys \"{cmd}\" data \"{data}\""));
+        if self.is_sysop() {
+            self.sprint(&format!("|NL|12Invalid command keys \"{cmd}\"."))?;
+        }
+        Ok(())
     }
 
     // ---- user stuff -------------------------------------------------------

@@ -252,4 +252,29 @@ impl Session {
         }
         Ok(())
     }
+
+    /// `%3` (mailr): read everyone's e-mail.
+    pub fn read_all_mail(&mut self) -> io::Result<()> {
+        self.log("* Read private mail");
+        let all = self.sh.db().msgs("email")?;
+        let mut i = 0;
+        while i < all.len() {
+            let m = all[i].clone();
+            self.show_msg("All e-mail", i + 1, all.len(), &m)?;
+            self.sprompt("|NL|U1[|U3N|U1]ext [|U3D|U1]elete [|U3Q|U1]uit: |U3")?;
+            match self.onek("NDQ\r")? {
+                'D' => {
+                    self.sh.db().delete_msg("email", m.id)?;
+                    self.sprint("|U1Deleted.")?;
+                    i += 1;
+                }
+                'Q' => break,
+                _ => i += 1,
+            }
+        }
+        if all.is_empty() {
+            self.sprint("|NL|U1No e-mail on the system.")?;
+        }
+        Ok(())
+    }
 }

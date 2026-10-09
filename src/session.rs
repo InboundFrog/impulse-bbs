@@ -196,6 +196,16 @@ impl Session {
         }
     }
 
+    /// Pick up changes the SysOp made to this account from another node.
+    pub fn check_reload(&mut self) {
+        let mut db = self.sh.db();
+        if let Some(o) = db.online.get_mut(&self.node)
+            && std::mem::take(&mut o.reload)
+                && let Some(u) = db.users.get(self.unum.wrapping_sub(1)) {
+                    self.user = u.clone();
+                }
+    }
+
     pub fn set_doing(&self, doing: &str) {
         if let Some(o) = self.sh.db().online.get_mut(&self.node) {
             o.doing = doing.to_string();
@@ -623,7 +633,8 @@ impl Session {
             tries += 1;
         }
         if self.user.locked_out {
-            if !self.printf("lockout")? {
+            let f = if self.user.locked_file.is_empty() { "lockout".to_string() } else { self.user.locked_file.clone() };
+            if !self.printf(&f)? {
                 self.sprint("|12This account has been locked out.")?;
             }
             self.log("Locked-out user tried to log on");
@@ -751,7 +762,7 @@ impl Session {
             };
             db.sys.last_callers.insert(0, lc);
             db.sys.last_callers.truncate(10);
-            db.online.insert(self.node, Online { name: self.user.name.clone(), doing: "Logging on".into() });
+            db.online.insert(self.node, Online { name: self.user.name.clone(), doing: "Logging on".into(), unum: self.unum, reload: false });
         }
         self.save_user();
         self.log("Logon");
@@ -883,6 +894,7 @@ impl Session {
     }
 
     fn menu_prompt(&mut self) -> io::Result<String> {
+        self.check_reload();
         let every: Vec<Command> = self.menu.cmds.iter().filter(|c| c.keys == "EVERYTIME").cloned().collect();
         for c in every {
             if self.acs(&c.acs) {
