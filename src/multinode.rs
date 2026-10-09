@@ -62,16 +62,22 @@ impl Session {
 
     /// `NC` (entermultichat / multichat): line-mode chat between nodes.
     pub fn multi_chat(&mut self, data: &str) -> io::Result<()> {
+        // 1-10 are open forums; 11 and up are OC pages, numbered 10 + node.
         let forum = match data.trim().parse::<u8>() {
             Ok(f @ 1..=10) => f,
             _ => {
                 self.sprompt("|NL|U1Enter which forum |U2(|U31|U2-|U310)|U1? |U3")?;
-                match self.input(2)?.parse::<u8>() {
+                match self.input(3)?.parse::<u8>() {
                     Ok(f @ 1..=10) => f,
+                    Ok(f @ 11..) if self.is_sysop() => f,
                     _ => return Ok(()),
                 }
             }
         };
+        self.chat_forum(forum)
+    }
+
+    pub fn chat_forum(&mut self, forum: u8) -> io::Result<()> {
         self.cls()?;
         self.sprint(&format!("|U1Entering forum #|U3{forum}|U1..."))?;
         self.sprint("|U3/Q|U1 = Quit  -  |U3/W|U1 = Who's on  -  |U3/S|U1 = Send node message|NL")?;

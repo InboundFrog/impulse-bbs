@@ -264,12 +264,35 @@ impl Session {
         Ok(())
     }
 
+    /// `OC`: page a SysOp who's on another node into a private forum.
+    // ponytail: no local console, so only SysOps logged on to a node can answer
     pub fn chat(&mut self, _data: &str) -> io::Result<()> {
-        self.sprint("|NL|U1The SysOp isn't available for chat right now.")?;
-        if self.pynq("|U1Leave a message to the SysOp instead? ", true)? {
-            self.send_email("1")?;
+        let sysops: Vec<usize> = {
+            let db = self.sh.db();
+            let users = &db.users;
+            db.online
+                .iter()
+                .filter(|(n, o)| **n != self.node && o.unum > 0)
+                .filter(|(_, o)| users.get(o.unum - 1).is_some_and(|u| self.acs_for(u, o.unum, &self.cfg().sysop_acs)))
+                .map(|(n, _)| *n)
+                .collect()
+        };
+        if sysops.is_empty() {
+            self.sprint("|NL|U1The SysOp isn't available for chat right now.")?;
+            if self.pynq("|U1Leave a message to the SysOp instead? ", true)? {
+                self.send_email("1")?;
+            }
+            return Ok(());
         }
-        Ok(())
+        self.sprompt("|NL|U1Reason for chat: |U3")?;
+        let why = self.input(60)?;
+        let forum = 10 + self.node as u8;
+        for n in sysops {
+            self.send_node(n, format!("|U5{} on node #{}|U4 is paging you for chat: |U3{why}|NL|U4Use |U3NC|U4 and enter forum |U3{forum}|U4 to answer.", self.user.name, self.node));
+        }
+        self.log(&format!("Chat request: {why}"));
+        self.sprint("|U1Paging the SysOp... wait in the chat forum.")?;
+        self.chat_forum(forum)
     }
 
     pub fn last_callers(&mut self) -> io::Result<()> {
