@@ -91,6 +91,8 @@ pub struct Session {
     /// Minutes left are capped so the caller is off before an event.
     chop: Option<Instant>,
     help: bool,
+    /// A command just ran from a menu (forcepause, `F` menu flag).
+    ran_cmd: bool,
     on_since: Instant,
     lines: u16,
     paging: bool,
@@ -112,11 +114,7 @@ pub fn rand(n: usize) -> usize {
 
 /// DOS-era file names are any case; match them case-insensitively.
 pub fn find_ci(dir: &Path, name: &str) -> Option<PathBuf> {
-    std::fs::read_dir(dir)
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .find(|p| p.file_name().and_then(|f| f.to_str()).is_some_and(|f| f.eq_ignore_ascii_case(name)))
+    std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).find(|p| p.file_name().and_then(|f| f.to_str()).is_some_and(|f| f.eq_ignore_ascii_case(name)))
 }
 
 /// Text with `|XX` codes removed, for measuring/printing raw.
@@ -168,15 +166,17 @@ pub fn run(sh: Arc<Shared>, stream: TcpStream, node: usize) {
         batch: Vec::new(),
         new_date: String::new(),
         help: false,
+        ran_cmd: false,
         on_since: Instant::now(),
         lines: 0,
         paging: true,
     };
     s.log(&format!("Connect from {peer}"));
     if let Err(e) = s.main()
-        && e.kind() != io::ErrorKind::ConnectionAborted {
-            s.log(&format!("Disconnected: {e}"));
-        }
+        && e.kind() != io::ErrorKind::ConnectionAborted
+    {
+        s.log(&format!("Disconnected: {e}"));
+    }
     s.logoff();
 }
 
@@ -230,9 +230,10 @@ impl Session {
         let mut db = self.sh.db();
         if let Some(o) = db.online.get_mut(&self.node)
             && std::mem::take(&mut o.reload)
-                && let Some(u) = db.users.get(self.unum.wrapping_sub(1)) {
-                    self.user = u.clone();
-                }
+            && let Some(u) = db.users.get(self.unum.wrapping_sub(1))
+        {
+            self.user = u.clone();
+        }
     }
 
     pub fn set_doing(&self, doing: &str) {
@@ -504,7 +505,9 @@ impl Session {
                 find_ci(&dir, &format!("{name}.{a}")).or_else(|| find_ci(&dir, &format!("{name}.{b}")))
             }
         };
-        let Some(bytes) = path.and_then(|p| std::fs::read(p).ok()) else { return Ok(false) };
+        let Some(bytes) = path.and_then(|p| std::fs::read(p).ok()) else {
+            return Ok(false);
+        };
         let end = bytes.iter().position(|&b| b == 0x1a).unwrap_or(bytes.len()); // ^Z / SAUCE
         let text: String = bytes[..end].iter().map(|&b| b as char).collect();
         let paging = std::mem::replace(&mut self.paging, false);
@@ -877,12 +880,7 @@ impl Session {
             let mut db = self.sh.db();
             db.sys.callers += 1;
             db.sys.zlog().calls += 1;
-            let lc = LastCaller {
-                caller_num: db.sys.callers,
-                name: self.user.name.clone(),
-                city_state: self.user.city_state.clone(),
-                when: now(),
-            };
+            let lc = LastCaller { caller_num: db.sys.callers, name: self.user.name.clone(), city_state: self.user.city_state.clone(), when: now() };
             db.sys.last_callers.insert(0, lc);
             db.sys.last_callers.truncate(10);
             db.online.insert(self.node, Online { name: self.user.name.clone(), doing: "Logging on".into(), unum: self.unum, ..Online::default() });
@@ -918,11 +916,12 @@ impl Session {
         let left = self.time_left_min();
         let soon = cfg.events.iter().filter(|e| e.active && e.kind != "A").filter_map(|e| events::minutes_until(e, now, left)).min();
         if let Some(m) = soon
-            && !self.is_sysop() {
-                let m = (m - 1).max(1);
-                self.chop = Some(Instant::now() + Duration::from_secs(m as u64 * 60));
-                self.sprint(&format!("|NL|U5- System event approaching - online time adjusted to |U3{m}|U5 minutes."))?;
-            }
+            && !self.is_sysop()
+        {
+            let m = (m - 1).max(1);
+            self.chop = Some(Instant::now() + Duration::from_secs(m as u64 * 60));
+            self.sprint(&format!("|NL|U5- System event approaching - online time adjusted to |U3{m}|U5 minutes."))?;
+        }
         Ok(())
     }
 
@@ -948,10 +947,11 @@ impl Session {
             Some(menu::parse(&bytes.iter().map(|&b| b as char).collect::<String>()))
         };
         let mut m = read(name)?;
-        if !m.flags.contains('P')
-            && let Some(g) = read("GLOBAL") {
-                m.cmds.extend(g.cmds);
-            }
+        if !m.flags.contains('G')
+            && let Some(g) = read("GLOBAL")
+        {
+            m.cmds.extend(g.cmds);
+        }
         Some(m)
     }
 
@@ -994,7 +994,9 @@ impl Session {
         }
         let from = self.menu_name.clone();
         let flow = self.goto_menu(&name)?;
-        let Flow::Menu(first) = flow else { return Ok(flow) };
+        let Flow::Menu(first) = flow else {
+            return Ok(flow);
+        };
         match kind {
             '/' if self.menu_stack.len() < 8 => self.menu_stack.push(from),
             '\\' => {
@@ -1057,6 +1059,15 @@ impl Session {
             }
         }
         self.set_doing(&format!("Menu: {}", self.menu_name));
+        if std::mem::take(&mut self.ran_cmd) && self.menu.flags.contains('F') {
+            self.pause()?;
+        }
+        if self.menu.flags.contains('P')
+            && self.user.ansi
+            && let Some(keys) = self.pulldown()?
+        {
+            return Ok(keys);
+        }
         if self.help || self.user.novice {
             self.help = false;
             self.show_menu_help()?;
@@ -1074,6 +1085,7 @@ impl Session {
             }
         }
         let cmd = self.getcmd()?;
+        self.ran_cmd = !cmd.is_empty();
         if cmd == "?" {
             self.help = true;
         }
@@ -1088,6 +1100,78 @@ impl Session {
             }
         }
         Ok(cmd)
+    }
+
+    /// Lightbar for pulldown (`P`) menus: each command with a short
+    /// description and an X/Y position is drawn there; arrows move, Enter or
+    /// a command's own key picks. None if the menu has nothing to draw.
+    // ponytail: DoPulls isn't in the 7.1 source, so the look is our own.
+    fn pulldown(&mut self) -> io::Result<Option<String>> {
+        let pos = |c: &Command| Some((c.x.parse::<u16>().ok().filter(|&x| x > 0)?, c.y.parse::<u16>().ok().filter(|&y| y > 0)?));
+        let items: Vec<(Command, (u16, u16))> = self
+            .menu
+            .cmds
+            .clone()
+            .into_iter()
+            .filter(|c| !c.sdesc.is_empty() && !c.flags.contains('H') && (c.flags.contains('U') || self.acs(&c.acs)))
+            .filter_map(|c| pos(&c).map(|p| (c, p)))
+            .collect();
+        if items.is_empty() {
+            return Ok(None);
+        }
+        let help = self.menu.help.clone();
+        if !self.printf(&help)? {
+            self.cls()?;
+            for t in self.menu.title.clone().iter().filter(|t| !t.is_empty()) {
+                self.sprint(t)?;
+            }
+        }
+        let draw = |s: &mut Session, i: usize, on: bool| -> io::Result<()> {
+            let (c, (x, y)) = &items[i];
+            s.out(&format!("\x1b[{y};{x}H"))?;
+            if on {
+                s.setc(0x1f)?
+            } else {
+                s.cl(1)?
+            }
+            s.out(&strip_pipes(&c.sdesc))?;
+            if on {
+                s.setc(7)?;
+                s.out(&format!("\x1b[24;1H\x1b[K{}", strip_pipes(&c.ldesc)))?;
+            }
+            Ok(())
+        };
+        for i in 0..items.len() {
+            draw(self, i, false)?;
+        }
+        let mut cur = 0;
+        loop {
+            draw(self, cur, true)?;
+            let k = self.t.getkey_ext()?;
+            let next = match k {
+                term::UP | term::LEFT => (cur + items.len() - 1) % items.len(),
+                term::DOWN | term::RIGHT => (cur + 1) % items.len(),
+                term::HOME => 0,
+                term::END => items.len() - 1,
+                '\r' => break,
+                _ => {
+                    let k = k.to_ascii_uppercase().to_string();
+                    if self.menu.cmds.iter().any(|c| c.keys == k && self.acs(&c.acs)) {
+                        self.setc(7)?;
+                        self.out("\x1b[24;1H\x1b[K")?;
+                        self.ran_cmd = true;
+                        return Ok(Some(k));
+                    }
+                    cur
+                }
+            };
+            draw(self, cur, false)?;
+            cur = next;
+        }
+        self.setc(7)?;
+        self.out("\x1b[24;1H\x1b[K")?;
+        self.ran_cmd = true;
+        Ok(Some(items[cur].0.keys.clone()))
     }
 
     /// Read a command: whole line normally, hot keys in one-key mode
@@ -1237,7 +1321,9 @@ impl Session {
 
 /// Age in years from MM/DD/YYYY, 0 if unparseable.
 pub fn age(bday: &str) -> i64 {
-    let Ok(b) = NaiveDate::parse_from_str(bday, "%m/%d/%Y") else { return 0 };
+    let Ok(b) = NaiveDate::parse_from_str(bday, "%m/%d/%Y") else {
+        return 0;
+    };
     let t = Local::now().date_naive();
     let mut a = t.year() - b.year();
     if (t.month(), t.day()) < (b.month(), b.day()) {

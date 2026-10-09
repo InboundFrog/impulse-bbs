@@ -40,7 +40,7 @@ pub struct Menu {
     pub gen_cols: String,
     pub gcols: [String; 3],
     /// C = clear screen, D = don't center, N = no prompt, F = force pause,
-    /// P = pulldown, T = show time left.
+    /// P = pulldown, T = show time left, G = no GLOBAL.MNU commands.
     pub flags: String,
     pub cmds: Vec<Command>,
 }

@@ -113,7 +113,56 @@ impl Term {
     }
 }
 
+/// Cursor keys as returned by `getkey_ext` (private-use chars).
+pub const UP: char = '\u{E000}';
+pub const DOWN: char = '\u{E001}';
+pub const RIGHT: char = '\u{E002}';
+pub const LEFT: char = '\u{E003}';
+pub const HOME: char = '\u{E004}';
+pub const END: char = '\u{E005}';
+pub const DEL: char = '\u{E006}';
+pub const PGUP: char = '\u{E007}';
+pub const PGDN: char = '\u{E008}';
+
+/// ANSI cursor sequence (after ESC [ or ESC O) to one of the key consts.
+fn ansi_key(seq: &str) -> Option<char> {
+    Some(match seq {
+        "A" => UP,
+        "B" => DOWN,
+        "C" => RIGHT,
+        "D" => LEFT,
+        "H" | "1~" | "7~" => HOME,
+        "F" | "K" | "4~" | "8~" => END,
+        "3~" => DEL,
+        "5~" => PGUP,
+        "6~" => PGDN,
+        _ => return None,
+    })
+}
+
 impl Term {
+    /// `getkey`, with ANSI cursor sequences folded into UP/DOWN/...;
+    /// a lone ESC comes back as '\x1b'.
+    pub fn getkey_ext(&mut self) -> io::Result<char> {
+        let c = self.getkey()?;
+        if c != '\x1b' || !self.key_ready(Duration::from_millis(80))? {
+            return Ok(c);
+        }
+        let b = self.getkey()?;
+        if b != '[' && b != 'O' {
+            return Ok(b);
+        }
+        let mut seq = String::new();
+        while seq.len() < 4 && self.key_ready(Duration::from_millis(80))? {
+            let k = self.getkey()?;
+            seq.push(k);
+            if k.is_ascii_alphabetic() || k == '~' {
+                break;
+            }
+        }
+        Ok(ansi_key(&seq).unwrap_or('\x1b'))
+    }
+
     /// Run `cmd` with stdin/stdout joined to the caller, telnet-escaped both
     /// ways (transfer protocols and doors; the FOSSIL handoff in EXEC.PAS).
     /// `text` turns the caller's Enter (CR, CR LF, CR NUL) into LF for doors.
@@ -149,9 +198,10 @@ impl Term {
                 Ok(n) => {
                     let data = state.feed(&b[..n]);
                     if let Some(w) = cin.as_mut()
-                        && w.write_all(&data).is_err() {
-                            cin = None; // child closed stdin; keep waiting for it
-                        }
+                        && w.write_all(&data).is_err()
+                    {
+                        cin = None; // child closed stdin; keep waiting for it
+                    }
                 }
                 Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut | io::ErrorKind::Interrupted) => {}
                 Err(e) => {
@@ -267,6 +317,13 @@ mod tests {
         let mut t = super::Unescape { text: true, ..Default::default() };
         assert_eq!(t.feed(b"a\r\nb\r\0c\r"), b"a\nb\nc\n");
         assert_eq!(t.feed(b"\nd"), b"d");
+    }
+
+    #[test]
+    fn cursor_keys() {
+        assert_eq!(super::ansi_key("A"), Some(super::UP));
+        assert_eq!(super::ansi_key("3~"), Some(super::DEL));
+        assert_eq!(super::ansi_key("Z"), None);
     }
 
     #[test]
