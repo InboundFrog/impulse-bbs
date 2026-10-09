@@ -11,11 +11,13 @@ use std::collections::HashMap;
 use std::io;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::time::{Duration, Instant};
 
 pub struct Shared {
-    pub cfg: Config,
+    /// Swapped whole when the SysOp edits it; sessions hold an `Arc` snapshot.
+    pub cfg: RwLock<Arc<Config>>,
+    pub cfg_path: String,
     // ponytail: one global lock for all data, per-file locks if node counts ever get large
     pub db: Mutex<Db>,
 }
@@ -23,6 +25,20 @@ pub struct Shared {
 impl Shared {
     pub fn db(&self) -> MutexGuard<'_, Db> {
         self.db.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn cfg(&self) -> Arc<Config> {
+        self.cfg.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Apply an edit to the configuration and write it back to disk.
+    pub fn edit_cfg(&self, f: impl FnOnce(&mut Config)) -> io::Result<()> {
+        let mut g = self.cfg.write().unwrap_or_else(|e| e.into_inner());
+        let mut c = (**g).clone();
+        f(&mut c);
+        c.save(&self.cfg_path)?;
+        *g = Arc::new(c);
+        Ok(())
     }
 }
 
@@ -99,7 +115,7 @@ pub fn strip_pipes(s: &str) -> String {
 
 pub fn run(sh: Arc<Shared>, stream: TcpStream, node: usize) {
     let peer = stream.peer_addr().map(|a| a.to_string()).unwrap_or_default();
-    let idle = Duration::from_secs(sh.cfg.idle_timeout_minutes.max(1) * 60);
+    let idle = Duration::from_secs(sh.cfg().idle_timeout_minutes.max(1) * 60);
     let t = match Term::new(stream, idle) {
         Ok(t) => t,
         Err(_) => {
@@ -138,7 +154,7 @@ impl Session {
         self.printf("welcome")?;
         self.getuser()?;
         self.logon()?;
-        let start = self.sh.cfg.start_menu.clone();
+        let start = self.cfg().start_menu.clone();
         match self.goto_menu(&start)? {
             Flow::Menu(Some(c)) => self.exec(&c)?,
             Flow::Menu(None) => {}
@@ -152,6 +168,10 @@ impl Session {
             let cmd = self.menu_prompt()?;
             self.exec(&cmd)?;
         }
+    }
+
+    pub fn cfg(&self) -> Arc<Config> {
+        self.sh.cfg()
     }
 
     pub fn log(&self, s: &str) {
@@ -177,7 +197,7 @@ impl Session {
     }
 
     pub fn is_sysop(&self) -> bool {
-        self.unum > 0 && self.acs(&self.sh.cfg.sysop_acs)
+        self.unum > 0 && self.acs(&self.cfg().sysop_acs)
     }
 
     pub fn time_left_min(&self) -> i64 {
@@ -199,7 +219,7 @@ impl Session {
     pub fn acs(&self, s: &str) -> bool {
         let u = &self.user;
         let now = Local::now();
-        let cfg = &self.sh.cfg;
+        let cfg = self.cfg();
         acs::eval(s, &mut |c, arg| {
             let n: i64 = arg.parse().unwrap_or(0);
             let ch = arg.chars().next().unwrap_or(' ');
@@ -350,7 +370,7 @@ impl Session {
 
     fn mci_text(&self, code: &str) -> Option<String> {
         let u = &self.user;
-        let cfg = &self.sh.cfg;
+        let cfg = self.cfg();
         Some(match code {
             "BN" => cfg.bbs_name.clone(),
             "SN" => cfg.sysop_name.clone(),
@@ -393,7 +413,7 @@ impl Session {
         if name.is_empty() {
             return Ok(false);
         }
-        let dir = self.sh.cfg.text_path.clone();
+        let dir = self.cfg().text_path.clone();
         let path = if name.contains('.') {
             find_ci(&dir, name)
         } else {
@@ -516,7 +536,7 @@ impl Session {
 
     pub fn pause(&mut self) -> io::Result<()> {
         let paging = std::mem::replace(&mut self.paging, false);
-        let p = self.sh.cfg.strings.pause.clone();
+        let p = self.cfg().strings.pause.clone();
         self.sprompt(&p)?;
         self.getkey()?;
         self.out(if self.user.ansi { "\r\x1b[K" } else { "\r                              \r" })?;
@@ -528,10 +548,11 @@ impl Session {
 
     fn getuser(&mut self) -> io::Result<()> {
         let sh = self.sh.clone();
-        let st = &sh.cfg.strings;
+        let cfg = sh.cfg();
+        let st = &cfg.strings;
         let mut tries = 0;
         loop {
-            if tries >= sh.cfg.max_logon_tries {
+            if tries >= cfg.max_logon_tries {
                 self.log("Too many logon attempts");
                 return Err(hangup());
             }
@@ -577,7 +598,7 @@ impl Session {
 
     fn new_user(&mut self, typed: &str) -> io::Result<()> {
         let sh = self.sh.clone();
-        let cfg = &sh.cfg;
+        let cfg = sh.cfg();
         if cfg.closed_system {
             if !self.printf("nonewusr")? {
                 self.sprint("|12Sorry, this system is closed to new users.")?;
@@ -668,7 +689,7 @@ impl Session {
         let today = today();
         if self.user.last_on != today {
             self.user.on_today = 0;
-            self.user.minutes_today = self.sh.cfg.minutes_per_day;
+            self.user.minutes_today = self.cfg().minutes_per_day;
         }
         if self.user.minutes_today <= 0 && !self.is_sysop() {
             if !self.printf("notlefta")? {
@@ -679,7 +700,7 @@ impl Session {
         self.user.on_today += 1;
         self.user.logons += 1;
         self.user.last_on = today;
-        self.board = self.user.last_board.min(self.sh.cfg.boards.len().saturating_sub(1));
+        self.board = self.user.last_board.min(self.cfg().boards.len().saturating_sub(1));
         self.on_since = Instant::now();
         {
             let mut db = self.sh.db();
@@ -718,7 +739,7 @@ impl Session {
 
     fn load_menu(&self, name: &str) -> Option<Menu> {
         let read = |n: &str| {
-            let p = find_ci(&self.sh.cfg.menu_path, &format!("{n}.MNU"))?;
+            let p = find_ci(&self.cfg().menu_path, &format!("{n}.MNU"))?;
             let bytes = std::fs::read(p).ok()?;
             Some(menu::parse(&bytes.iter().map(|&b| b as char).collect::<String>()))
         };

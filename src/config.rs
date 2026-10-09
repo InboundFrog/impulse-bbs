@@ -1,10 +1,10 @@
 //! `impulse.toml`: the parts of STATUS.DAT (systatrec) and the string table
 //! (fstringrec) that this port uses. Every field has a default.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct Config {
     pub bbs_name: String,
@@ -30,7 +30,7 @@ pub struct Config {
     pub strings: Strings,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Board {
     pub name: String,
     /// Storage name: `<data_path>/msgs/<file>.json`.
@@ -41,7 +41,7 @@ pub struct Board {
     pub post_acs: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct Strings {
     pub enter_handle: String,
@@ -108,5 +108,15 @@ pub fn load(path: &str) -> Result<Config, String> {
             Ok(Config::default())
         }
         Err(e) => Err(format!("{path}: {e}")),
+    }
+}
+
+impl Config {
+    /// Write back to `path` (comments in a hand-edited file are not kept).
+    pub fn save(&self, path: &str) -> std::io::Result<()> {
+        let s = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
+        let tmp = format!("{path}.tmp");
+        std::fs::write(&tmp, s)?;
+        std::fs::rename(tmp, path)
     }
 }

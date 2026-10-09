@@ -241,7 +241,7 @@ impl Session {
             return self.sprint("|NL|12You are restricted from writing automessages.");
         }
         self.printf("AUTOWRT")?;
-        let Some(body) = self.editor(30)? else { return self.sprint(&self.sh.cfg.strings.aborted.clone()) };
+        let Some(body) = self.editor(30)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
         let anon = self.pynq("|U1Post anonymously? ", false)?;
         let mut lines = vec![if anon { format!("@{}", self.user.name) } else { self.user.name.clone() }];
         lines.extend(body);
@@ -329,7 +329,7 @@ impl Session {
 
     /// Board indexes this user may read.
     fn boards(&self) -> Vec<usize> {
-        let b = &self.sh.cfg.boards;
+        let b = &self.cfg().boards;
         (0..b.len()).filter(|&i| self.acs(&b[i].acs)).collect()
     }
 
@@ -357,7 +357,7 @@ impl Session {
             _ => {
                 self.tmpl("msgbase.top", &[], "|NL|U3Message bases")?;
                 for (i, &b) in list.iter().enumerate() {
-                    let vars = [("ME", self.sh.cfg.boards[b].name.clone()), ("MI", (i + 1).to_string()), ("MT", "Local".into())];
+                    let vars = [("ME", self.cfg().boards[b].name.clone()), ("MI", (i + 1).to_string()), ("MT", "Local".into())];
                     self.tmpl("msgbase.mid", &vars, "|U2%MI. |U1%ME")?;
                 }
                 self.tmpl("msgbase.bot", &[], "")?;
@@ -398,7 +398,7 @@ impl Session {
 
     /// Read a board from the first unread message. Returns true if the user quit.
     fn read_board(&mut self, b: usize, new_only: bool) -> io::Result<bool> {
-        let board = self.sh.cfg.boards[b].clone();
+        let board = self.cfg().boards[b].clone();
         let msgs = self.sh.db().msgs(&board.file)?;
         let last = self.user.last_read.get(&board.file).copied().unwrap_or(0);
         let mut i = match msgs.iter().position(|m| m.id > last) {
@@ -440,7 +440,7 @@ impl Session {
 
     fn newscan(&mut self) -> io::Result<()> {
         for b in self.boards() {
-            let name = self.sh.cfg.boards[b].name.clone();
+            let name = self.cfg().boards[b].name.clone();
             self.sprint(&format!("|NL|U1Scanning |U3{name}|U1..."))?;
             if self.read_board(b, true)? {
                 break;
@@ -477,7 +477,7 @@ impl Session {
     }
 
     fn post(&mut self, b: usize, reply: Option<&Msg>) -> io::Result<()> {
-        let board = self.sh.cfg.boards[b].clone();
+        let board = self.cfg().boards[b].clone();
         if self.user.ac.contains('P') || !self.acs(&board.post_acs) {
             return self.sprint("|NL|12You can't post on this base.");
         }
@@ -487,12 +487,12 @@ impl Session {
             None => {
                 self.sprompt("|NL|U1To (Enter for All): |U3")?;
                 let to = self.input(36)?;
-                let title = self.sh.cfg.strings.msg_title.clone();
+                let title = self.cfg().strings.msg_title.clone();
                 (if to.is_empty() { "All".into() } else { to }, self.ask(&title, 60)?)
             }
         };
-        let max = self.sh.cfg.max_message_lines;
-        let Some(body) = self.editor(max)? else { return self.sprint(&self.sh.cfg.strings.aborted.clone()) };
+        let max = self.cfg().max_message_lines;
+        let Some(body) = self.editor(max)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
         let m = Msg { id: 0, from: self.user.name.clone(), from_num: self.unum, to, to_num: 0, subject, date: now(), body };
         self.sh.db().post(&board.file, m)?;
         self.user.posts += 1;
@@ -506,7 +506,7 @@ impl Session {
             return self.sprint("|NL|12You can't send e-mail.");
         }
         let to = if data.trim().is_empty() {
-            let p = self.sh.cfg.strings.msg_send_to.clone();
+            let p = self.cfg().strings.msg_send_to.clone();
             self.sprompt(&format!("|NL{p}"))?;
             self.input(36)?
         } else {
@@ -518,14 +518,14 @@ impl Session {
         self.sprompt("|U1To: |U3")?;
         self.out(&to_name)?;
         self.nl()?;
-        let title = self.sh.cfg.strings.msg_title.clone();
+        let title = self.cfg().strings.msg_title.clone();
         let subject = self.ask(&title, 60)?;
         self.email_to(n, to_name, subject)
     }
 
     fn email_to(&mut self, n: usize, to: String, subject: String) -> io::Result<()> {
-        let max = self.sh.cfg.max_message_lines;
-        let Some(body) = self.editor(max)? else { return self.sprint(&self.sh.cfg.strings.aborted.clone()) };
+        let max = self.cfg().max_message_lines;
+        let Some(body) = self.editor(max)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
         let m = Msg { id: 0, from: self.user.name.clone(), from_num: self.unum, to, to_num: n, subject, date: now(), body };
         self.sh.db().post("email", m)?;
         self.user.emails += 1;

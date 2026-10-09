@@ -10,7 +10,7 @@ mod term;
 
 use session::Shared;
 use std::net::TcpListener;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::{io::Write, process, thread};
 
 fn main() {
@@ -28,12 +28,12 @@ fn main() {
         process::exit(1);
     });
     println!("Impulse v{} - {} - listening on {}", env!("CARGO_PKG_VERSION"), cfg.bbs_name, cfg.listen);
-    let sh = Arc::new(Shared { cfg, db: Mutex::new(db) });
+    let sh = Arc::new(Shared { cfg: RwLock::new(Arc::new(cfg)), cfg_path: path, db: Mutex::new(db) });
     for stream in listener.incoming().flatten() {
         // Claim the lowest free node number, as MULTINOD.PAS assigns nodes.
         let node = {
             let mut db = sh.db();
-            let node = (1..=sh.cfg.max_nodes).find(|n| !db.online.contains_key(n));
+            let node = (1..=sh.cfg().max_nodes).find(|n| !db.online.contains_key(n));
             if let Some(n) = node {
                 db.online.insert(n, db::Online { name: "Logging in".into(), doing: "Logon".into() });
             }
