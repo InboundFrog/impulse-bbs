@@ -8,9 +8,6 @@ use std::io;
 
 /// Right margin (rightmargin := cols-2).
 const WIDTH: usize = 78;
-/// Screen rows of the header above the text.
-const HEAD: usize = 3;
-const ROWS: usize = 24 - HEAD;
 
 /// What the screen needs after a key.
 #[derive(Debug, PartialEq)]
@@ -32,11 +29,17 @@ pub struct Buf {
     pub y: usize,
     pub ins: bool,
     max: usize,
+    /// Screen rows taken by the header above the text.
+    pub head: usize,
 }
 
 impl Buf {
     pub fn new(max: usize) -> Buf {
-        Buf { l: vec![Vec::new()], x: 0, y: 0, ins: true, max: max.max(1) }
+        Buf { l: vec![Vec::new()], x: 0, y: 0, ins: true, max: max.max(1), head: 3 }
+    }
+
+    fn rows(&self) -> usize {
+        24 - self.head
     }
 
     fn cur(&mut self) -> &mut Vec<char> {
@@ -158,8 +161,8 @@ impl Buf {
             }
             UP | '\x05' => self.y = self.y.saturating_sub(1),
             DOWN | '\x18' => self.y = (self.y + 1).min(last),
-            PGUP | '\x12' => self.y = self.y.saturating_sub(ROWS),
-            PGDN | '\x03' => self.y = (self.y + ROWS).min(last),
+            PGUP | '\x12' => self.y = self.y.saturating_sub(self.rows()),
+            PGDN | '\x03' => self.y = (self.y + self.rows()).min(last),
             HOME | '\x11' => self.x = 0,
             END | '\x17' => self.x = self.l[self.y].len(),
             '\x01' => self.word_left(),
@@ -269,39 +272,57 @@ impl Buf {
 
 impl Session {
     /// The full-screen editor; same contract as `editor`.
-    // ponytail: built-in header, FSEHEAD/FSEHELP files aren't read
     pub fn fse(&mut self, max: usize, to: &str, subject: &str, quote: Option<&Msg>) -> io::Result<Option<Vec<String>>> {
         let mut b = Buf::new(max);
+        let board = self.cfg().boards.get(self.board).map(|b| b.name.clone()).unwrap_or_default();
+        let vars = [("BN", board), ("DT", crate::session::today()), ("FM", self.user.name.clone()), ("TL", subject.to_string()), ("TO", to.to_string())];
+        for (k, v) in vars {
+            self.vars.insert(k.into(), v);
+        }
+        let file = self.text_file("FSEHEAD");
+        // header height is where FSEHEAD leaves the cursor (hdrlen:=wherey)
+        b.head = file.as_ref().map_or(3, |t| (t.matches('\n').count() + usize::from(!t.ends_with('\n'))).clamp(1, 20));
+        let rows = b.rows();
+        let head = file.unwrap_or_else(|| {
+            format!(
+                "|U1To: |U3{:<30}|U1 Subj: |U3{}|NL|U1Ctrl: |U3Z|U1 save  |U3U|U1 help  |U3I|U1 insert  |U3Y|U1 del line   or |U3/S /A{} /?|U1 on a line alone",
+                to,
+                subject,
+                if quote.is_some() { " /Q" } else { "" }
+            ) + "|NL"
+                + &"\u{c4}".repeat(79)
+        }); // CP437 line
+        let r = self.fse_loop(&mut b, &head, rows, quote);
+        for k in ["BN", "DT", "FM", "TL", "TO"] {
+            self.vars.remove(k);
+        }
+        r
+    }
+
+    fn fse_loop(&mut self, b: &mut Buf, head: &str, rows: usize, quote: Option<&Msg>) -> io::Result<Option<Vec<String>>> {
         let mut top = 0;
-        let head = format!(
-            "|U1To: |U3{:<30}|U1 Subj: |U3{}|NL|U1Ctrl: |U3Z|U1 save  |U3U|U1 help  |U3I|U1 insert  |U3Y|U1 del line   or |U3/S /A{} /?|U1 on a line alone",
-            to,
-            subject,
-            if quote.is_some() { " /Q" } else { "" }
-        );
         let mut redraw = Ed::Refresh;
         loop {
             // keep the cursor in the window
             if b.y < top {
                 top = b.y;
                 redraw = Ed::Refresh;
-            } else if b.y >= top + ROWS {
-                top = b.y + 1 - ROWS;
+            } else if b.y >= top + rows {
+                top = b.y + 1 - rows;
                 redraw = Ed::Refresh;
             }
             match redraw {
                 Ed::Refresh => {
                     self.cls()?;
-                    self.sprint(&head)?;
-                    self.out(&"\u{c4}".repeat(79))?; // CP437 line
-                    self.draw_lines(&b, top, top, top + ROWS)?;
+                    self.show_text(head)?;
+                    self.draw_lines(b, top, top, top + rows)?;
                 }
-                Ed::From(n) => self.draw_lines(&b, top, n.max(top), top + ROWS)?,
-                Ed::Line => self.draw_lines(&b, top, b.y, b.y + 1)?,
+                Ed::From(n) => self.draw_lines(b, top, n.max(top), top + rows)?,
+                Ed::Line => self.draw_lines(b, top, b.y, b.y + 1)?,
                 _ => {}
             }
             self.setc(7)?;
-            self.out(&format!("\x1b[{};{}H", b.y - top + HEAD + 1, b.x + 1))?;
+            self.out(&format!("\x1b[{};{}H", b.y - top + b.head + 1, b.x + 1))?;
             let k = self.t.getkey_ext()?;
             redraw = b.key(k);
             match redraw {
@@ -318,8 +339,10 @@ impl Session {
                 }
                 Ed::Help => {
                     self.cls()?;
-                    for l in FSE_HELP {
-                        self.sprint(l)?;
+                    if !self.printf("FSEHELP")? {
+                        for l in FSE_HELP {
+                            self.sprint(l)?;
+                        }
                     }
                     self.pause()?;
                     redraw = Ed::Refresh;
@@ -346,7 +369,7 @@ impl Session {
     fn draw_lines(&mut self, b: &Buf, top: usize, from: usize, to: usize) -> io::Result<()> {
         self.setc(7)?;
         for n in from..to {
-            self.out(&format!("\x1b[{};1H\x1b[K", n - top + HEAD + 1))?;
+            self.out(&format!("\x1b[{};1H\x1b[K", n - top + b.head + 1))?;
             if let Some(l) = b.l.get(n) {
                 self.out(&l.iter().collect::<String>())?;
             } else if n > b.l.len() {

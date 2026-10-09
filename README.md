@@ -89,7 +89,6 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 - Menus without a help file get a generated command list. Impulse 7.1 had
   dropped its generic menus. Menu flag `G` leaves out `GLOBAL.MNU`.
 - The pulldown look is ours: 7.1's `DoPulls` isn't in the released source.
-- The full-screen editor has a built-in header; `FSEHEAD`/`FSEHELP` aren't read.
 
 ## Not carried over
 

@@ -492,8 +492,16 @@ impl Session {
     /// Show a text file from `text_path` (printf): `NAME` picks NAME.ANS/.ASC,
     /// or a random NAME.1-NAME.9 if those exist. Returns false if missing.
     pub fn printf(&mut self, name: &str) -> io::Result<bool> {
+        match self.text_file(name) {
+            Some(t) => self.show_text(&t).map(|_| true),
+            None => Ok(false),
+        }
+    }
+
+    /// The text of display file `name` as `printf` would pick it, up to ^Z.
+    pub fn text_file(&self, name: &str) -> Option<String> {
         if name.is_empty() {
-            return Ok(false);
+            return None;
         }
         let dir = self.cfg().text_path.clone();
         let path = if name.contains('.') {
@@ -507,17 +515,19 @@ impl Session {
                 find_ci(&dir, &format!("{name}.{a}")).or_else(|| find_ci(&dir, &format!("{name}.{b}")))
             }
         };
-        let Some(bytes) = path.and_then(|p| std::fs::read(p).ok()) else {
-            return Ok(false);
-        };
+        let bytes = std::fs::read(path?).ok()?;
         let end = bytes.iter().position(|&b| b == 0x1a).unwrap_or(bytes.len()); // ^Z / SAUCE
-        let text: String = bytes[..end].iter().map(|&b| b as char).collect();
+        Some(bytes[..end].iter().map(|&b| b as char).collect())
+    }
+
+    /// Show a display file's text with `%` codes on and paging off.
+    pub fn show_text(&mut self, text: &str) -> io::Result<()> {
         let paging = std::mem::replace(&mut self.paging, false);
         let pct = std::mem::replace(&mut self.pct, true);
-        let r = self.sprompt(&text);
+        let r = self.sprompt(text);
         self.paging = paging;
         self.pct = pct;
-        r.map(|_| true)
+        r
     }
 
     /// Show `file` with `%XX` vars set, or `fallback` if the file is missing.
