@@ -68,10 +68,15 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 
 ## Running a system
 
+- **Setting up:** `impulse init [dir]` writes the stock config, menus and
+  display files (INSTALL). `impulse clean [config]` deletes every user but
+  #1 and the NUV queue (MAKECLEA). `new_user_order` sets which new-user
+  questions are asked, in order (NUORDER/MAKENUO).
 - **Console:** the server reads commands on stdin: `W` who's online, `S`
   today's stats, `M node text` node message (0 = all), `K node` hang up,
-  `L [n]` log tail, `Q` shut down. The editors run in a session, so log on
-  over telnet for those.
+  `V node` watch a node live (the local screen), `B node [n]` its
+  scrollback, `L [n]` log tail, `Q` shut down. The editors run in a
+  session, so log on over telnet for those.
 - **Importing a 7.1 system:** `impulse import <dir with USER.LST etc.> [config]`
   into a fresh `data_path`. Users (numbers, stats, flags, colours), message
   and file bases and `*.DIR` file lists come across; the config is backed up
@@ -92,8 +97,9 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 
 ## Not carried over
 
-The local sysop screen and scrollback, the installer and the DOS
-utilities (`MAKE*.PAS`).
+`MAKEWFC` (the DOS WFC screen image) and typing into a caller's session
+from the console: log on over telnet, or use `OC` chat, instead. LHA
+level-2 headers aren't listed by `FV`.
 
 ## Layout
 
