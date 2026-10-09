@@ -14,7 +14,30 @@ impl Session {
                 self.printf(data)?;
             }
             ('-', 'L') => self.sprint(&format!("|NL{data}"))?,
+            // -C writes on the local status line; there is no local screen
             ('-', 'S' | 'C') => self.log(data),
+            ('-', ';') => self.macro_keys(data),
+            ('-', 'W') => self.write_hdr(data)?,
+            ('-', 'P') => self.print_string(data)?,
+            ('-', 'V') => self.bbs_list_view()?,
+            ('-', 'A') => self.bbs_list_add()?,
+            ('-', 'Q') => self.questionnaire(data)?,
+            ('-', 'R') => self.read_answers(data)?,
+            // -T forced the file/message scan prompt in old menus; prompts here are always live
+            ('-', 'T') => {}
+            ('X', 'Y') => return self.yes_no_cmd(data),
+            ('O', 'A') => {
+                let mut u = self.user.clone();
+                self.auto_validate(&mut u);
+                self.user = u;
+                self.save_user();
+            }
+            ('O', 'B') => self.bulletins("")?,
+            ('O', 'S') => self.bulletins(data)?,
+            ('U', 'A') => self.reply_auto()?,
+            ('U', 'D') => self.time_bank_deposit(data)?,
+            ('U', 'L') => self.time_bank_withdraw(data)?,
+            ('S', 'S' | 'H') => self.sprint("|NL|U1Memory is managed by Rust; there is no stack or heap limit to show.")?,
             ('-', '$') => {
                 // Password gate: DATA is PASSWORD;PROMPT;FAIL-MESSAGE
                 let p: Vec<&str> = data.split(';').collect();

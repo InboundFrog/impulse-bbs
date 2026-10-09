@@ -49,6 +49,7 @@ pub struct User {
     pub uk: u64,
     pub dk: u64,
     pub file_points: i32,
+    pub time_bank: i64,
     pub locked_out: bool,
     pub deleted: bool,
     pub last_board: usize,
@@ -90,6 +91,7 @@ impl Default for User {
             uk: 0,
             dk: 0,
             file_points: 0,
+            time_bank: 0,
             locked_out: false,
             deleted: false,
             last_board: 0,
@@ -202,6 +204,19 @@ impl Db {
         let mut v = self.msgs(file)?;
         v.retain(|m| m.id != id);
         store(&self.msg_path(file), &v)
+    }
+
+    /// Any JSON data file under the data directory (default if missing).
+    pub fn get<T: DeserializeOwned + Default>(&self, name: &str) -> io::Result<T> {
+        load(&self.dir.join(name))
+    }
+
+    pub fn put<T: Serialize + ?Sized>(&self, name: &str, v: &T) -> io::Result<()> {
+        store(&self.dir.join(name), v)
+    }
+
+    pub fn path(&self, name: &str) -> PathBuf {
+        self.dir.join(name)
     }
 
     /// Plain text line files (rumors, oneliners, auto-message).

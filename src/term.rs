@@ -12,6 +12,8 @@ pub struct Term {
     buf: Vec<u8>,
     last: u8,
     skip_lf: bool,
+    /// Keys stuffed by a `-;` macro, returned before real input.
+    pub stuffed: std::collections::VecDeque<char>,
     /// Current text attribute (DOS style: low nibble fg, high nibble bg, 0x80 blink).
     pub curco: u8,
 }
@@ -20,7 +22,7 @@ impl Term {
     pub fn new(s: TcpStream, idle: Duration) -> io::Result<Term> {
         s.set_read_timeout(Some(idle))?;
         s.set_nodelay(true)?;
-        let mut t = Term { s, buf: Vec::new(), last: 0, skip_lf: false, curco: 7 };
+        let mut t = Term { s, buf: Vec::new(), last: 0, skip_lf: false, stuffed: Default::default(), curco: 7 };
         // WILL ECHO + WILL SUPPRESS-GO-AHEAD: character mode, we do the echoing.
         t.buf.extend_from_slice(&[IAC, 251, 1, IAC, 251, 3]);
         Ok(t)
@@ -66,6 +68,9 @@ impl Term {
     /// Enter (CR, CR LF, CR NUL or bare LF) always comes back as '\r'.
     pub fn getkey(&mut self) -> io::Result<char> {
         self.flush()?;
+        if let Some(c) = self.stuffed.pop_front() {
+            return Ok(c);
+        }
         loop {
             let b = self.byte()?;
             let skip = std::mem::take(&mut self.skip_lf);

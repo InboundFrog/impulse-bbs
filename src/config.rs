@@ -26,6 +26,15 @@ pub struct Config {
     /// Users matching this ACS are SysOps: no time limit, sysop-only commands.
     pub sysop_acs: String,
     pub max_message_lines: usize,
+    /// Most minutes a user may keep in the time bank (0 disables it).
+    pub max_time_bank: i64,
+    /// Bulletin files are `<prefix><n>` (BULLETIN lists them).
+    pub bulletin_prefix: String,
+    /// Levels given by auto-validation (`OA`) and the user editor.
+    pub auto_sl: u8,
+    pub auto_dsl: u8,
+    pub auto_ar: String,
+    pub auto_ac: String,
     pub boards: Vec<Board>,
     pub strings: Strings,
 }
@@ -54,6 +63,9 @@ pub struct Strings {
     pub aborted: String,
     pub msg_title: String,
     pub msg_send_to: String,
+    pub bulletin_line: String,
+    pub time_bank_deposit: String,
+    pub time_bank_withdraw: String,
 }
 
 impl Default for Config {
@@ -77,6 +89,12 @@ impl Default for Config {
             minutes_per_day: 60,
             sysop_acs: "s255".into(),
             max_message_lines: 100,
+            max_time_bank: 60,
+            bulletin_prefix: "bullet".into(),
+            auto_sl: 50,
+            auto_dsl: 50,
+            auto_ar: String::new(),
+            auto_ac: String::new(),
             boards: vec![Board { name: "General".into(), file: "general".into(), acs: String::new(), post_acs: "s20".into() }],
             strings: Strings::default(),
         }
@@ -96,6 +114,9 @@ impl Default for Strings {
             aborted: "|12Aborted.".into(),
             msg_title: "|U1Subject: |U3".into(),
             msg_send_to: "|U1Send to: |U3".into(),
+            bulletin_line: "|NL|U1Bulletin to read |U2(|U3?|U2=list, |U3Q|U2=quit)|U1: |U3".into(),
+            time_bank_deposit: "|NL|U1Deposit how many minutes? |U3".into(),
+            time_bank_withdraw: "|NL|U1Withdraw how many minutes? |U3".into(),
         }
     }
 }

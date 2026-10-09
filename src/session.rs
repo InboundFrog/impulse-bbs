@@ -69,6 +69,10 @@ pub struct Session {
     pub board: usize,
     /// `%XX` template variables (sysMciSet).
     pub vars: HashMap<String, String>,
+    /// Header text for the `HDR` display file (`-W`, `%HS`).
+    pub hdr: String,
+    /// Inside a display file: `%XX` MCI codes are live (showscr).
+    pct: bool,
     help: bool,
     on_since: Instant,
     lines: u16,
@@ -134,6 +138,8 @@ pub fn run(sh: Arc<Shared>, stream: TcpStream, node: usize) {
         menu_stack: Vec::new(),
         board: 0,
         vars: HashMap::new(),
+        hdr: String::new(),
+        pct: false,
         help: false,
         on_since: Instant::now(),
         lines: 0,
@@ -325,6 +331,15 @@ impl Session {
                     i += 3;
                     continue;
                 }
+                if self.pct {
+                    self.out(&std::mem::take(&mut text))?;
+                    i += 3;
+                    if !self.pipe(&key, &c, &mut i)? {
+                        text.push('%');
+                        text.extend(&c[i - 2..i]);
+                    }
+                    continue;
+                }
             }
             text.push(ch);
             i += 1;
@@ -350,6 +365,12 @@ impl Session {
             (b'C', b'L') => self.cls()?,
             (b'N', b'L') => self.nl()?,
             (b'P', b'A') => self.pause()?,
+            (b'L', b'S') if *i < c.len() => {
+                // %LSx: a line of x under the header
+                let line = c[*i].to_string().repeat(self.hdr.chars().count() + 1);
+                *i += 1;
+                self.out(&line)?;
+            }
             (b'X', b'Y') => {
                 let num = |s: &[char]| s.iter().collect::<String>().parse::<u16>().unwrap_or(0).max(1);
                 if *i + 4 <= c.len() {
@@ -403,6 +424,9 @@ impl Session {
             "VN" => "Impulse".into(),
             "VV" => env!("CARGO_PKG_VERSION").into(),
             "OS" => std::env::consts::OS.into(),
+            "HS" => self.hdr.clone(),
+            "BM" => cfg.max_time_bank.to_string(),
+            "BT" => u.time_bank.to_string(),
             _ => return None,
         })
     }
@@ -429,8 +453,10 @@ impl Session {
         let end = bytes.iter().position(|&b| b == 0x1a).unwrap_or(bytes.len()); // ^Z / SAUCE
         let text: String = bytes[..end].iter().map(|&b| b as char).collect();
         let paging = std::mem::replace(&mut self.paging, false);
+        let pct = std::mem::replace(&mut self.pct, true);
         let r = self.sprompt(&text);
         self.paging = paging;
+        self.pct = pct;
         r.map(|_| true)
     }
 
@@ -455,6 +481,13 @@ impl Session {
     }
 
     pub fn input_main(&mut self, max: usize, upper: bool, echo: Option<char>) -> io::Result<String> {
+        let s = self.input_raw(max, upper, echo)?;
+        self.nl()?;
+        Ok(s)
+    }
+
+    /// Line input that leaves the cursor after the text (no newline).
+    pub fn input_raw(&mut self, max: usize, upper: bool, echo: Option<char>) -> io::Result<String> {
         let mut s = String::new();
         loop {
             match self.getkey()? {
@@ -477,7 +510,6 @@ impl Session {
                 _ => {}
             }
         }
-        self.nl()?;
         Ok(s)
     }
 
