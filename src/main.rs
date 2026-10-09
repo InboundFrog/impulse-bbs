@@ -12,6 +12,7 @@ mod misc;
 mod msgs;
 mod multinode;
 mod nuv;
+mod script;
 mod session;
 mod sysop;
 mod term;

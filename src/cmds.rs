@@ -124,6 +124,7 @@ impl Session {
             ('M', '$') => self.board_stats()?,
             ('M', '#') => self.sprint("|NL|U1Enter the number of the message base to change to it.")?,
             ('D', 'C' | 'D' | 'G' | 'S' | 'W' | '-') => self.door(c2, data)?,
+            ('I', 'S') => return self.script(data),
             ('I', 'D') => self.door('I', data)?,
             ('F', 'A') => self.change_fbase(data)?,
             ('F', 'L') => self.list_cur(data)?,
