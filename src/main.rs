@@ -9,6 +9,7 @@ mod edit;
 mod events;
 mod files;
 mod fse;
+mod import;
 mod menu;
 mod misc;
 mod msgs;
@@ -27,7 +28,23 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::{io::Write, process, thread};
 
 fn main() {
-    let path = std::env::args().nth(1).unwrap_or_else(|| "impulse.toml".into());
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).is_some_and(|a| a == "import") {
+        let Some(dir) = args.get(2) else {
+            eprintln!("usage: impulse import <impulse directory> [config]");
+            process::exit(2);
+        };
+        let cfg = args.get(3).map_or("impulse.toml", |s| s.as_str());
+        match import::run(std::path::Path::new(dir), cfg) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("{e}");
+                process::exit(1);
+            }
+        }
+        return;
+    }
+    let path = args.get(1).cloned().unwrap_or_else(|| "impulse.toml".into());
     let cfg = config::load(&path).unwrap_or_else(|e| {
         eprintln!("{e}");
         process::exit(1);

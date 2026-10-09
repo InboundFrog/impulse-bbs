@@ -367,6 +367,11 @@ pub fn hash_pw(pw: &str) -> String {
     Argon2::default().hash_password(pw.as_bytes(), &salt).map(|h| h.to_string()).unwrap_or_default()
 }
 
+/// Logon check; also tries the password in capitals, as Impulse kept them.
+pub fn check_login(hash: &str, pw: &str) -> bool {
+    check_pw(hash, pw) || (pw.to_uppercase() != pw && check_pw(hash, &pw.to_uppercase()))
+}
+
 pub fn check_pw(hash: &str, pw: &str) -> bool {
     PasswordHash::new(hash).is_ok_and(|h| Argon2::default().verify_password(pw.as_bytes(), &h).is_ok())
 }

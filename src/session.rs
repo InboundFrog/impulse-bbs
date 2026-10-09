@@ -667,7 +667,7 @@ impl Session {
             self.sprompt(&st.enter_pw)?;
             let pw = self.input_pw(20)?;
             let u = sh.db().users[n - 1].clone();
-            if db::check_pw(&u.pw_hash, &pw) {
+            if db::check_login(&u.pw_hash, &pw) {
                 self.user = u;
                 self.unum = n;
                 break;
@@ -728,7 +728,7 @@ impl Session {
                         db.find_user(&name).map(|n| (n, db.users[n - 1].clone()))
                     };
                     match found {
-                        Some((n, u)) if db::check_pw(&u.pw_hash, &pw) && !u.locked_out => {
+                        Some((n, u)) if db::check_login(&u.pw_hash, &pw) && !u.locked_out => {
                             if u.sl <= cfg.new_sl {
                                 if !self.printf("notval")? {
                                     self.sprint("|U1You have not been validated yet.")?;

@@ -249,7 +249,7 @@ impl Session {
                 'W' => {
                     self.sprompt("|U1Current password: |U3")?;
                     let old = self.input_pw(20)?;
-                    if !crate::db::check_pw(&self.user.pw_hash, &old) {
+                    if !crate::db::check_login(&self.user.pw_hash, &old) {
                         self.sprint("|12Wrong password.")?;
                         continue;
                     }
