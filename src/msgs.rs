@@ -634,9 +634,15 @@ impl Session {
             anon,
             alias,
             reply_to: reply.map_or(0, |m| m.id),
-            unvalidated: self.user.ac.contains('V'),
             ..Msg::default()
         };
+        self.store_post(&board, m)?;
+        self.sprint(&format!("|U1Message posted on |U3{}|U1.", board.name))
+    }
+
+    /// Save a new post and credit the poster; flag `V` users' posts unvalidated.
+    pub fn store_post(&mut self, board: &Board, m: Msg) -> io::Result<()> {
+        let m = Msg { unvalidated: self.user.ac.contains('V'), ..m };
         {
             let mut db = self.sh.db();
             db.sys.zlog().pub_posts += 1;
@@ -645,7 +651,7 @@ impl Session {
         self.user.posts += 1;
         self.save_user();
         self.log(&format!("Posted on {}", board.name));
-        self.sprint(&format!("|U1Message posted on |U3{}|U1.", board.name))
+        Ok(())
     }
 
     // ---- e-mail -------------------------------------------------------------
@@ -693,11 +699,11 @@ impl Session {
     }
 
     /// A letter from this user, not yet addressed.
-    fn letter(&self, subject: String, body: Vec<String>) -> Msg {
+    pub fn letter(&self, subject: String, body: Vec<String>) -> Msg {
         Msg { from: self.user.name.clone(), from_num: self.unum, subject, date: now(), body, ..Msg::default() }
     }
 
-    fn deliver(&mut self, to: &[(usize, String)], m: Msg) -> io::Result<()> {
+    pub fn deliver(&mut self, to: &[(usize, String)], m: Msg) -> io::Result<()> {
         {
             let mut db = self.sh.db();
             for (n, name) in to {

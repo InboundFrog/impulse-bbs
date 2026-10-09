@@ -118,6 +118,8 @@ impl Session {
             ('M', 'N') => self.newscan()?,
             ('M', 'E') => self.send_email(data)?,
             ('M', 'M') => self.read_mail()?,
+            ('M', 'Q') => self.send_qwk()?,
+            ('M', 'R') => self.receive_rep()?,
             ('M', 'L') => self.mass_mail()?,
             ('M', 'J') => self.purge_posts()?,
             ('M', 'K') => self.purge_mail()?,

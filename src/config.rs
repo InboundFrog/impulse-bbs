@@ -62,6 +62,9 @@ pub struct Config {
     /// External transfer protocols (PROTOCOL.DAT).
     pub protocols: Vec<Protocol>,
     pub events: Vec<Event>,
+    /// QWK packet name (BBSID, up to 8 chars) and message limit per packet.
+    pub qwk_id: String,
+    pub qwk_max: usize,
     /// Files and K a user may download per file / K uploaded (0 = no ratio).
     pub dl_ratio: u32,
     pub dlk_ratio: u32,
@@ -250,6 +253,8 @@ impl Default for Config {
                 Protocol { key: "X".into(), name: "Xmodem".into(), dl_cmd: "sz -b --xmodem %F".into(), ul_cmd: String::new(), ..Protocol::default() },
             ],
             events: Vec::new(),
+            qwk_id: "IMPULSE".into(),
+            qwk_max: 500,
             dl_ratio: 0,
             dlk_ratio: 0,
             use_file_points: false,

@@ -550,7 +550,7 @@ impl Session {
         Ok(false)
     }
 
-    fn choose_protocol(&mut self, upload: bool, batch: bool) -> io::Result<Option<Protocol>> {
+    pub fn choose_protocol(&mut self, upload: bool, batch: bool) -> io::Result<Option<Protocol>> {
         let list: Vec<Protocol> = self
             .cfg()
             .protocols
@@ -576,7 +576,7 @@ impl Session {
     }
 
     /// Run a protocol command in `cwd`; true if it exited cleanly.
-    fn run_protocol(&mut self, cmd: &str, files: &[PathBuf], cwd: &Path) -> io::Result<bool> {
+    pub fn run_protocol(&mut self, cmd: &str, files: &[PathBuf], cwd: &Path) -> io::Result<bool> {
         let list: Vec<String> = files.iter().map(|p| shell_quote(&std::path::absolute(p).unwrap_or(p.clone()))).collect();
         let line = cmd.replace("%F", &list.join(" "));
         self.log(&format!("Transfer: {line}"));
