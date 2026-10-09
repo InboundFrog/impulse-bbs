@@ -17,6 +17,12 @@ pub struct Config {
     pub start_menu: String,
     pub closed_system: bool,
     pub new_user_password: String,
+    /// Matrix logon: callers start at `shuttle_menu` and use O1/O2/O3 to
+    /// log on, apply or check their validation.
+    pub shuttle_log: bool,
+    pub shuttle_menu: String,
+    /// Asked by O1 when set; O3 reveals it to validated users.
+    pub shuttle_pw: String,
     pub new_sl: u8,
     pub new_dsl: u8,
     pub new_ar: String,
@@ -190,6 +196,9 @@ impl Default for Config {
             start_menu: "MAIN".into(),
             closed_system: false,
             new_user_password: String::new(),
+            shuttle_log: false,
+            shuttle_menu: "MATRIX".into(),
+            shuttle_pw: String::new(),
             new_sl: 20,
             new_dsl: 20,
             new_ar: String::new(),

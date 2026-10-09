@@ -65,6 +65,7 @@ impl Session {
                 self.printf(data)?;
                 return Err(hangup());
             }
+            ('O', '1'..='3') => self.shuttle = c2 as u8 - b'0',
             ('O', 'I') => {
                 self.printf("logon")?;
                 self.pause()?;

@@ -86,6 +86,8 @@ pub struct Session {
     pct: bool,
     /// Key handed back by a `@x`/`$x`/`!x` command in a prompt menu (readpmnu).
     pub pkey: Option<char>,
+    /// Set by O1-O3 on the matrix menu (tshuttlelogon).
+    pub shuttle: u8,
     help: bool,
     on_since: Instant,
     lines: u16,
@@ -154,6 +156,7 @@ pub fn run(sh: Arc<Shared>, stream: TcpStream, node: usize) {
         hdr: String::new(),
         pct: false,
         pkey: None,
+        shuttle: 0,
         mconf: 0,
         fconf: 0,
         board_pw: Vec::new(),
@@ -178,8 +181,10 @@ impl Session {
     fn main(&mut self) -> io::Result<()> {
         self.cls()?;
         self.sprint("|U3Impulse |U4v|VV |U1(Rust port)  |U2Node |NN")?;
-        self.printf("welcome")?;
-        self.getuser()?;
+        if !(self.cfg().shuttle_log && self.matrix()?) {
+            self.printf("welcome")?;
+            self.getuser()?;
+        }
         self.logon()?;
         let start = self.cfg().start_menu.clone();
         match self.goto_menu(&start)? {
@@ -670,6 +675,75 @@ impl Session {
             return Err(hangup());
         }
         Ok(())
+    }
+
+    /// Matrix logon (doshuttle). True if O2/O3 already established the user.
+    fn matrix(&mut self) -> io::Result<bool> {
+        self.printf("premtx")?;
+        let cfg = self.cfg();
+        if !matches!(self.goto_menu(&cfg.shuttle_menu)?, Flow::Menu(_)) {
+            return Ok(false);
+        }
+        let mut tries = 0;
+        loop {
+            if tries >= cfg.max_logon_tries {
+                return Err(hangup());
+            }
+            self.shuttle = 0;
+            let cmd = self.menu_prompt()?;
+            self.exec(&cmd)?;
+            match std::mem::take(&mut self.shuttle) {
+                1 if cfg.shuttle_pw.is_empty() => return Ok(false),
+                1 => {
+                    self.sprompt("|NL|U1System password: |U3")?;
+                    if self.input_pw(20)?.eq_ignore_ascii_case(&cfg.shuttle_pw) {
+                        return Ok(false);
+                    }
+                    self.log("Illegal system password at the matrix");
+                    tries += 1;
+                }
+                2 => {
+                    if self.pynq(&cfg.strings.logon_new, false)? {
+                        self.new_user("")?;
+                        return Ok(true);
+                    }
+                }
+                3 => {
+                    self.sprompt(&cfg.strings.enter_handle)?;
+                    let name = self.input_caps(36)?;
+                    self.sprompt(&cfg.strings.enter_pw)?;
+                    let pw = self.input_pw(20)?;
+                    let found = {
+                        let db = self.sh.db();
+                        db.find_user(&name).map(|n| (n, db.users[n - 1].clone()))
+                    };
+                    match found {
+                        Some((n, u)) if db::check_pw(&u.pw_hash, &pw) && !u.locked_out => {
+                            if u.sl <= cfg.new_sl {
+                                if !self.printf("notval")? {
+                                    self.sprint("|U1You have not been validated yet.")?;
+                                }
+                                continue;
+                            }
+                            self.log(&format!("{} found out the matrix password", u.name));
+                            if !self.printf("val")? && !cfg.shuttle_pw.is_empty() {
+                                self.sprint(&format!("|U1System password: |U3{}", cfg.shuttle_pw))?;
+                            }
+                            if self.pynq("|U1Would you like to log on now? ", true)? {
+                                self.user = u;
+                                self.unum = n;
+                                return Ok(true);
+                            }
+                        }
+                        _ => {
+                            self.sprint("|12Illegal logon.")?;
+                            tries += 1;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     fn new_user(&mut self, typed: &str) -> io::Result<()> {
