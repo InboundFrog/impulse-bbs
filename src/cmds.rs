@@ -1,8 +1,7 @@
 //! Menu command implementations (domenucommand in MENUS.PAS and the units it
 //! calls: MAIL*.PAS, MISC*.PAS, RUMORS.PAS, CMD.PAS, MULTINOD.PAS ...).
 
-use crate::db::Msg;
-use crate::session::{Flow, Session, hangup, now, rand};
+use crate::session::{Flow, Session, hangup, rand};
 use std::io;
 
 impl Session {
@@ -95,7 +94,7 @@ impl Session {
 
     // ---- user stuff -------------------------------------------------------
 
-    fn your_info(&mut self) -> io::Result<()> {
+    pub fn your_info(&mut self) -> io::Result<()> {
         if self.printf("yourinfo")? {
             return Ok(());
         }
@@ -114,7 +113,7 @@ impl Session {
         Ok(())
     }
 
-    fn user_config(&mut self) -> io::Result<()> {
+    pub fn user_config(&mut self) -> io::Result<()> {
         loop {
             let yn = |b: bool| if b { "Yes" } else { "No" };
             let u = &self.user;
@@ -167,7 +166,7 @@ impl Session {
         Ok(())
     }
 
-    fn chat(&mut self, _data: &str) -> io::Result<()> {
+    pub fn chat(&mut self, _data: &str) -> io::Result<()> {
         self.sprint("|NL|U1The SysOp isn't available for chat right now.")?;
         if self.pynq("|U1Leave a message to the SysOp instead? ", true)? {
             self.send_email("1")?;
@@ -175,7 +174,7 @@ impl Session {
         Ok(())
     }
 
-    fn last_callers(&mut self) -> io::Result<()> {
+    pub fn last_callers(&mut self) -> io::Result<()> {
         let list = self.sh.db().sys.last_callers.clone();
         self.sprint("|NL|U3Last callers to |BN|NL|U2#      Handle                    From                      When")?;
         for c in list {
@@ -184,7 +183,7 @@ impl Session {
         Ok(())
     }
 
-    fn user_list(&mut self) -> io::Result<()> {
+    pub fn user_list(&mut self) -> io::Result<()> {
         let users: Vec<(usize, String, String, u8)> = self
             .sh
             .db()
@@ -201,7 +200,7 @@ impl Session {
         Ok(())
     }
 
-    fn whos_online(&mut self) -> io::Result<()> {
+    pub fn whos_online(&mut self) -> io::Result<()> {
         let list: Vec<(usize, String, String)> =
             self.sh.db().online.iter().map(|(n, o)| (*n, o.name.clone(), o.doing.clone())).collect();
         self.sprint("|NL|U2Node  Handle                         Activity")?;
@@ -213,7 +212,7 @@ impl Session {
 
     // ---- automessage, oneliners, rumors -----------------------------------
 
-    fn read_auto(&mut self) -> io::Result<()> {
+    pub fn read_auto(&mut self) -> io::Result<()> {
         let lines = self.sh.db().lines("auto.msg");
         let Some((author, body)) = lines.split_first() else {
             return self.sprint("|NL|U1No AutoMessage available.");
@@ -236,7 +235,7 @@ impl Session {
         Ok(())
     }
 
-    fn write_auto(&mut self) -> io::Result<()> {
+    pub fn write_auto(&mut self) -> io::Result<()> {
         if self.user.ac.contains('A') {
             return self.sprint("|NL|12You are restricted from writing automessages.");
         }
@@ -250,7 +249,7 @@ impl Session {
         self.sprint("|U1AutoMessage saved.")
     }
 
-    fn oneliners(&mut self) -> io::Result<()> {
+    pub fn oneliners(&mut self) -> io::Result<()> {
         let mut list = self.sh.db().lines("oneliners.txt");
         self.cls()?;
         if !self.printf("oneline.top")? {
@@ -278,7 +277,7 @@ impl Session {
         self.sprint("|U1Your oneliner was added.")
     }
 
-    fn random_rumor(&mut self) -> io::Result<()> {
+    pub fn random_rumor(&mut self) -> io::Result<()> {
         let list = self.sh.db().lines("rumors.txt");
         if list.is_empty() {
             return self.sprint("|NL|U1No rumors exist!");
@@ -287,7 +286,7 @@ impl Session {
         self.tmpl("rumors.ran", &[("RR", list[n].clone()), ("RI", (n + 1).to_string())], "|NL|U1Rumor: |U3%RR")
     }
 
-    fn add_rumor(&mut self) -> io::Result<()> {
+    pub fn add_rumor(&mut self) -> io::Result<()> {
         self.sprompt("|NL|U1Enter your rumor:|NL|U3: ")?;
         let r = self.input(79)?;
         if r.is_empty() {
@@ -300,7 +299,7 @@ impl Session {
         self.sprint("|U1Rumor added.")
     }
 
-    fn list_rumors(&mut self) -> io::Result<()> {
+    pub fn list_rumors(&mut self) -> io::Result<()> {
         let list = self.sh.db().lines("rumors.txt");
         self.tmpl("rumors.top", &[], "|NL|U3Rumors")?;
         for (i, r) in list.iter().enumerate() {
@@ -309,7 +308,7 @@ impl Session {
         self.tmpl("rumors.bot", &[], "")
     }
 
-    fn delete_rumor(&mut self) -> io::Result<()> {
+    pub fn delete_rumor(&mut self) -> io::Result<()> {
         if !self.is_sysop() {
             return self.sprint("|NL|12Only the SysOp can delete rumors.");
         }
@@ -322,242 +321,6 @@ impl Session {
                 self.sh.db().put_lines("rumors.txt", &list)?;
                 self.sprint("|U1Rumor deleted.")?;
             }
-        Ok(())
-    }
-
-    // ---- messages ---------------------------------------------------------
-
-    /// Board indexes this user may read.
-    fn boards(&self) -> Vec<usize> {
-        let b = &self.cfg().boards;
-        (0..b.len()).filter(|&i| self.acs(&b[i].acs)).collect()
-    }
-
-    pub fn board_by_number(&mut self, n: &str) -> io::Result<()> {
-        let list = self.boards();
-        match n.parse::<usize>() {
-            Ok(n @ 1..) if n <= list.len() => {
-                self.board = list[n - 1];
-                self.user.last_board = self.board;
-                self.sprint("|U1Joined |U3|CM")
-            }
-            _ => self.sprint("|12No such message base."),
-        }
-    }
-
-    fn change_board(&mut self, data: &str) -> io::Result<()> {
-        let list = self.boards();
-        if list.is_empty() {
-            return self.sprint("|NL|12No message bases available.");
-        }
-        let pos = list.iter().position(|&b| b == self.board).unwrap_or(0);
-        let n = match data.trim() {
-            "+" => (pos + 1) % list.len() + 1,
-            "-" => (pos + list.len() - 1) % list.len() + 1,
-            _ => {
-                self.tmpl("msgbase.top", &[], "|NL|U3Message bases")?;
-                for (i, &b) in list.iter().enumerate() {
-                    let vars = [("ME", self.cfg().boards[b].name.clone()), ("MI", (i + 1).to_string()), ("MT", "Local".into())];
-                    self.tmpl("msgbase.mid", &vars, "|U2%MI. |U1%ME")?;
-                }
-                self.tmpl("msgbase.bot", &[], "")?;
-                self.sprompt("|NL|U1Change to which base? |U3")?;
-                match self.input(3)?.parse() {
-                    Ok(n) => n,
-                    Err(_) => return Ok(()),
-                }
-            }
-        };
-        self.board_by_number(&n.to_string())
-    }
-
-    fn show_msg(&mut self, area: &str, n: usize, total: usize, m: &Msg) -> io::Result<()> {
-        if self.user.ansi {
-            self.cls()?;
-        } else {
-            self.nl()?;
-        }
-        self.sprint(&format!("|U1Msg |U3{n}|U1 of |U3{total} |U1in |U3{area}"))?;
-        self.out_field("From", &m.from)?;
-        self.out_field("To", &m.to)?;
-        self.out_field("Subj", &m.subject)?;
-        self.out_field("Date", &m.date)?;
-        self.nl()?;
-        for l in &m.body {
-            self.sprint(&format!("|U0{l}"))?;
-        }
-        Ok(())
-    }
-
-    /// Header field, printed raw so names can't inject pipe codes.
-    fn out_field(&mut self, label: &str, v: &str) -> io::Result<()> {
-        self.sprompt(&format!("|U1{label:<5}: |U3"))?;
-        self.out(v)?;
-        self.nl()
-    }
-
-    /// Read a board from the first unread message. Returns true if the user quit.
-    fn read_board(&mut self, b: usize, new_only: bool) -> io::Result<bool> {
-        let board = self.cfg().boards[b].clone();
-        let msgs = self.sh.db().msgs(&board.file)?;
-        let last = self.user.last_read.get(&board.file).copied().unwrap_or(0);
-        let mut i = match msgs.iter().position(|m| m.id > last) {
-            Some(i) => i,
-            None if new_only => return Ok(false),
-            None if msgs.is_empty() => {
-                self.sprint(&format!("|NL|U1No messages in |U3{}|U1.", board.name))?;
-                return Ok(false);
-            }
-            None => {
-                self.sprompt(&format!("|NL|U1No new messages. Start at (1-{}): |U3", msgs.len()))?;
-                match self.input(5)?.parse::<usize>() {
-                    Ok(n @ 1..) if n <= msgs.len() => n - 1,
-                    _ => return Ok(false),
-                }
-            }
-        };
-        self.set_doing(&format!("Reading {}", board.name));
-        loop {
-            self.show_msg(&board.name, i + 1, msgs.len(), &msgs[i])?;
-            let read = self.user.last_read.entry(board.file.clone()).or_default();
-            *read = (*read).max(msgs[i].id);
-            self.sprompt("|NL|U1[|U3N|U1]ext [|U3A|U1]gain [|U3R|U1]eply [|U3P|U1]ost [|U3Q|U1]uit: |U3")?;
-            match self.onek("NARPQ\r")? {
-                'A' => {}
-                'R' => self.post(b, Some(&msgs[i]))?,
-                'P' => self.post(b, None)?,
-                'Q' => return Ok(true),
-                _ => {
-                    i += 1;
-                    if i >= msgs.len() {
-                        self.sprint("|U1End of messages.")?;
-                        return Ok(false);
-                    }
-                }
-            }
-        }
-    }
-
-    fn newscan(&mut self) -> io::Result<()> {
-        for b in self.boards() {
-            let name = self.cfg().boards[b].name.clone();
-            self.sprint(&format!("|NL|U1Scanning |U3{name}|U1..."))?;
-            if self.read_board(b, true)? {
-                break;
-            }
-        }
-        self.sprint("|U1Newscan complete.")
-    }
-
-    /// Line editor: `/S` saves, `/A` aborts, `/L` lists.
-    // ponytail: no word wrap or full-screen editor yet
-    fn editor(&mut self, max: usize) -> io::Result<Option<Vec<String>>> {
-        self.sprint(&format!("|NL|U1Enter up to |U3{max}|U1 lines. |U3/S|U1 saves, |U3/A|U1 aborts, |U3/L|U1 lists."))?;
-        let mut lines: Vec<String> = Vec::new();
-        loop {
-            self.sprompt(&format!("|U2{:>3}: |U0", lines.len() + 1))?;
-            let l = self.input_main(78, false, None)?; // untrimmed: keep indentation
-            match l.trim().to_ascii_uppercase().as_str() {
-                "/S" => return Ok((!lines.is_empty()).then_some(lines)),
-                "/A" => return Ok(None),
-                "/L" => {
-                    for (i, l) in lines.clone().iter().enumerate() {
-                        self.sprompt(&format!("|U2{:>3}: |U0", i + 1))?;
-                        self.out(l)?;
-                        self.nl()?;
-                    }
-                }
-                _ => lines.push(l),
-            }
-            if lines.len() >= max {
-                self.sprint("|U1Maximum lines reached, saving.")?;
-                return Ok(Some(lines));
-            }
-        }
-    }
-
-    fn post(&mut self, b: usize, reply: Option<&Msg>) -> io::Result<()> {
-        let board = self.cfg().boards[b].clone();
-        if self.user.ac.contains('P') || !self.acs(&board.post_acs) {
-            return self.sprint("|NL|12You can't post on this base.");
-        }
-        self.set_doing(&format!("Posting in {}", board.name));
-        let (to, subject) = match reply {
-            Some(m) => (m.from.clone(), if m.subject.starts_with("Re:") { m.subject.clone() } else { format!("Re: {}", m.subject) }),
-            None => {
-                self.sprompt("|NL|U1To (Enter for All): |U3")?;
-                let to = self.input(36)?;
-                let title = self.cfg().strings.msg_title.clone();
-                (if to.is_empty() { "All".into() } else { to }, self.ask(&title, 60)?)
-            }
-        };
-        let max = self.cfg().max_message_lines;
-        let Some(body) = self.editor(max)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
-        let m = Msg { id: 0, from: self.user.name.clone(), from_num: self.unum, to, to_num: 0, subject, date: now(), body };
-        self.sh.db().post(&board.file, m)?;
-        self.user.posts += 1;
-        self.save_user();
-        self.log(&format!("Posted on {}", board.name));
-        self.sprint(&format!("|U1Message posted on |U3{}|U1.", board.name))
-    }
-
-    fn send_email(&mut self, data: &str) -> io::Result<()> {
-        if self.user.ac.contains('E') {
-            return self.sprint("|NL|12You can't send e-mail.");
-        }
-        let to = if data.trim().is_empty() {
-            let p = self.cfg().strings.msg_send_to.clone();
-            self.sprompt(&format!("|NL{p}"))?;
-            self.input(36)?
-        } else {
-            data.trim().to_string()
-        };
-        let found = self.sh.db().find_user(&to);
-        let Some(n) = found else { return self.sprint("|12No such user.") };
-        let to_name = self.sh.db().users[n - 1].name.clone();
-        self.sprompt("|U1To: |U3")?;
-        self.out(&to_name)?;
-        self.nl()?;
-        let title = self.cfg().strings.msg_title.clone();
-        let subject = self.ask(&title, 60)?;
-        self.email_to(n, to_name, subject)
-    }
-
-    fn email_to(&mut self, n: usize, to: String, subject: String) -> io::Result<()> {
-        let max = self.cfg().max_message_lines;
-        let Some(body) = self.editor(max)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
-        let m = Msg { id: 0, from: self.user.name.clone(), from_num: self.unum, to, to_num: n, subject, date: now(), body };
-        self.sh.db().post("email", m)?;
-        self.user.emails += 1;
-        self.save_user();
-        self.sprint("|U1Mail sent.")
-    }
-
-    fn read_mail(&mut self) -> io::Result<()> {
-        let mine: Vec<Msg> = self.sh.db().msgs("email")?.into_iter().filter(|m| m.to_num == self.unum).collect();
-        if mine.is_empty() {
-            return self.sprint("|NL|U1You have no mail waiting.");
-        }
-        self.set_doing("Reading e-mail");
-        let mut i = 0;
-        while i < mine.len() {
-            let m = mine[i].clone();
-            self.show_msg("E-mail", i + 1, mine.len(), &m)?;
-            self.sprompt("|NL|U1[|U3N|U1]ext [|U3R|U1]eply [|U3D|U1]elete [|U3Q|U1]uit: |U3")?;
-            match self.onek("NRDQ\r")? {
-                'R' => {
-                    let s = if m.subject.starts_with("Re:") { m.subject.clone() } else { format!("Re: {}", m.subject) };
-                    self.email_to(m.from_num, m.from.clone(), s)?;
-                }
-                'D' => {
-                    self.sh.db().delete_msg("email", m.id)?;
-                    self.sprint("|U1Deleted.")?;
-                    i += 1;
-                }
-                'Q' => break,
-                _ => i += 1,
-            }
-        }
         Ok(())
     }
 }
