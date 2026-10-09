@@ -19,6 +19,7 @@ mod nuv;
 mod qwk;
 mod script;
 mod session;
+mod setup;
 mod sysop;
 mod term;
 mod wfc;
@@ -37,6 +38,23 @@ fn main() {
         };
         let cfg = args.get(3).map_or("impulse.toml", |s| s.as_str());
         match import::run(std::path::Path::new(dir), cfg) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("{e}");
+                process::exit(1);
+            }
+        }
+        return;
+    }
+    if let Some(cmd @ ("init" | "clean")) = args.get(1).map(String::as_str) {
+        let r = if cmd == "init" {
+            setup::init(std::path::Path::new(args.get(2).map_or(".", |s| s.as_str())))
+        } else {
+            config::load(args.get(2).map_or("impulse.toml", |s| s.as_str()))
+                .map_err(|e| std::io::Error::other(e.to_string()))
+                .and_then(|c| setup::clean(std::path::Path::new(&c.data_path)))
+        };
+        match r {
             Ok(s) => println!("{s}"),
             Err(e) => {
                 eprintln!("{e}");
