@@ -281,14 +281,25 @@ impl Db {
         m.id = self.sys.next_msg_id;
         let mut v = self.msgs(file)?;
         v.push(m);
+        store(&self.msg_path(file), &v)?;
+        self.prune(file, max)?;
+        self.save()
+    }
+
+    /// Drop the oldest non-permanent messages beyond `max`; returns how many.
+    pub fn prune(&mut self, file: &str, max: usize) -> io::Result<usize> {
+        let mut v = self.msgs(file)?;
+        let n = v.len();
         while max > 0 && v.len() > max {
             match v.iter().position(|m| !m.permanent) {
                 Some(i) => v.remove(i),
                 None => break,
             };
         }
-        store(&self.msg_path(file), &v)?;
-        self.save()
+        if v.len() != n {
+            store(&self.msg_path(file), &v)?;
+        }
+        Ok(n - v.len())
     }
 
     pub fn update_msg(&mut self, file: &str, id: u64, f: impl FnOnce(&mut Msg)) -> io::Result<()> {

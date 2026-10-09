@@ -157,6 +157,17 @@ impl Session {
                     'Z' => self.show_zlog()?,
                     'D' => self.mini_dos()?,
                     '3' => self.read_all_mail()?,
+                    'F' => self.fbase_editor()?,
+                    '1' => self.edit_files()?,
+                    '2' => self.sort_files()?,
+                    '4' => self.unlisted_download(data)?,
+                    '5' => self.move_file()?,
+                    '6' => self.upload_all()?,
+                    '7' => self.validate_files()?,
+                    '8' => self.add_gif_specs()?,
+                    '9' => self.pack_boards()?,
+                    '$' => self.raw_dir(true)?,
+                    '%' => self.raw_dir(false)?,
                     _ => self.no_cmd(cmd, data)?,
                 }
             }

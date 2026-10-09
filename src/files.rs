@@ -877,6 +877,289 @@ impl Session {
         self.log(&format!("Removed {} from {}", f.name, fb.name));
         self.sprint("|U1Removed.")
     }
+
+    // ---- SysOp (FILE5/9/10/13/14.PAS) ----------------------------------------
+
+    /// `%F` (dlboardedit)
+    pub fn fbase_editor(&mut self) -> io::Result<()> {
+        self.log("* File base edit");
+        let fb = self.cfg().fbases.clone();
+        if let Some(new) = self.edit_vec("File bases", &fb, &[])? {
+            self.sh.edit_cfg(|c| c.fbases = new)?;
+            self.fbase = self.fbase.min(self.cfg().fbases.len().saturating_sub(1));
+        }
+        Ok(())
+    }
+
+    fn cur_fbase(&mut self) -> io::Result<Option<FBase>> {
+        let fb = self.cfg().fbases.get(self.fbase).cloned();
+        if fb.is_none() {
+            self.sprint("|NL|12No file base selected.")?;
+        }
+        Ok(fb)
+    }
+
+    /// `%1` (editfiles): the current base's file records.
+    pub fn edit_files(&mut self) -> io::Result<()> {
+        let Some(fb) = self.cur_fbase()? else { return Ok(()) };
+        self.log("* Edited files");
+        let v = self.sh.db().files(&fb.file)?;
+        if let Some(new) = self.edit_vec(&format!("Files in {}", fb.name), &v, &[])? {
+            self.sh.db().put_files(&fb.file, &new)?;
+        }
+        Ok(())
+    }
+
+    /// `%2` (sort): by name, this base or all of them.
+    pub fn sort_files(&mut self) -> io::Result<()> {
+        self.log("* Sorted files");
+        let all = self.pynq("|NL|U1Sort all file bases? ", false)?;
+        let c = self.cfg();
+        let bases: Vec<&FBase> = if all { c.fbases.iter().collect() } else { c.fbases.get(self.fbase).into_iter().collect() };
+        for fb in bases {
+            let db = self.sh.db();
+            let mut v = db.files(&fb.file)?;
+            v.sort_by_key(|f| f.name.to_uppercase());
+            db.put_files(&fb.file, &v)?;
+            drop(db);
+            self.sprint(&format!("|U1Sorted |U3{}|U1 ({} files).", fb.name, v.len()))?;
+        }
+        Ok(())
+    }
+
+    /// `%4` (unlisted_download): send any file on disk.
+    pub fn unlisted_download(&mut self, data: &str) -> io::Result<()> {
+        let path = if data.trim().is_empty() {
+            self.sprompt("|NL|U1Path of file to send: |U3")?;
+            self.input(78)?
+        } else {
+            data.trim().to_string()
+        };
+        let p = PathBuf::from(path);
+        if !p.is_file() {
+            return self.sprint("|12File not found.");
+        }
+        self.log(&format!("* Unlisted download of {}", p.display()));
+        let Some(pr) = self.choose_protocol(false, false)? else { return Ok(()) };
+        let dir = self.cfg().data_path.clone();
+        let ok = self.run_protocol(&pr.dl_cmd, &[p], &dir)?;
+        self.sprint(if ok { "|NL|U1Transfer complete." } else { "|NL|12Transfer aborted." })
+    }
+
+    /// `%5` (move): a file to another base, record and all.
+    pub fn move_file(&mut self) -> io::Result<()> {
+        let Some(fb) = self.cur_fbase()? else { return Ok(()) };
+        let Some((_, f)) = self.ask_file("Move which file", false)?.into_iter().next() else { return Ok(()) };
+        let list = self.list_fbases()?;
+        self.sprompt("|NL|U1Move to which base? |U3")?;
+        let Ok(n @ 1..) = self.input(3)?.parse::<usize>() else { return Ok(()) };
+        let Some(to) = list.get(n - 1).map(|&b| self.cfg().fbases[b].clone()) else { return Ok(()) };
+        if to.file == fb.file {
+            return Ok(());
+        }
+        let src = file_path(&fb, &f.name);
+        if src.exists() {
+            std::fs::create_dir_all(&to.dl_path)?;
+            let dst = to.dl_path.join(&f.name);
+            if std::fs::rename(&src, &dst).is_err() {
+                std::fs::copy(&src, &dst)?;
+                std::fs::remove_file(&src)?;
+            }
+        }
+        let db = self.sh.db();
+        let mut v = db.files(&fb.file)?;
+        v.retain(|x| x.name != f.name);
+        db.put_files(&fb.file, &v)?;
+        let mut w = db.files(&to.file)?;
+        w.push(f.clone());
+        db.put_files(&to.file, &w)?;
+        drop(db);
+        self.log(&format!("* Moved {} from {} to {}", f.name, fb.name, to.name));
+        self.sprint(&format!("|U1Moved |U3{}|U1 to |U3{}|U1.", f.name, to.name))
+    }
+
+    /// `%6` (uploadall): add files sitting in a base's directory unlisted.
+    pub fn upload_all(&mut self) -> io::Result<()> {
+        let all = self.pynq("|NL|U1Scan all file bases? ", false)?;
+        let c = self.cfg();
+        let bases: Vec<FBase> = if all { c.fbases.clone() } else { c.fbases.get(self.fbase).cloned().into_iter().collect() };
+        let mut add_all = false;
+        'bases: for fb in bases {
+            self.sprint(&format!("|NL|U1Scanning |U3{}|U1 ({})", fb.name, fb.dl_path.display()))?;
+            let Ok(rd) = std::fs::read_dir(&fb.dl_path) else { continue };
+            let mut names: Vec<String> = rd.flatten().filter(|e| e.path().is_file()).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+            names.sort();
+            for name in names {
+                let mut v = self.sh.db().files(&fb.file)?;
+                if v.iter().any(|f| f.name.eq_ignore_ascii_case(&name)) {
+                    continue;
+                }
+                let path = fb.dl_path.join(&name);
+                let size = std::fs::metadata(&path)?.len();
+                self.sprompt("|NL|U3")?;
+                self.out(&format!("{name} {}k", size / 1024))?;
+                self.nl()?;
+                let k = if add_all {
+                    'A'
+                } else {
+                    self.sprompt("|U3Add file? |U1[A/Y/N/D/J/Q] |U2")?;
+                    self.onek("YNDJQA\r")?
+                };
+                let (desc, ext) = match k {
+                    'Y' | '\r' | 'A' => {
+                        add_all |= k == 'A';
+                        match Self::zip_diz(&path) {
+                            Some(d) => d,
+                            None if add_all => ("(No description)".into(), Vec::new()),
+                            None => {
+                                self.sprompt("|U2Enter description: |U3")?;
+                                (self.input(55)?, Vec::new())
+                            }
+                        }
+                    }
+                    'D' => {
+                        let _ = std::fs::remove_file(&path);
+                        continue;
+                    }
+                    'J' => continue 'bases,
+                    'Q' => return Ok(()),
+                    _ => continue,
+                };
+                v.push(FileRec {
+                    name,
+                    desc,
+                    ext,
+                    size,
+                    owner: self.user.name.clone(),
+                    owner_num: self.unum,
+                    date: today(),
+                    ..FileRec::default()
+                });
+                self.sh.db().put_files(&fb.file, &v)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// `%7` (validatefiles)
+    pub fn validate_files(&mut self) -> io::Result<()> {
+        let c = self.cfg();
+        let mut any = false;
+        for fb in &c.fbases {
+            let mut v = self.sh.db().files(&fb.file)?;
+            let mut changed = false;
+            let mut i = 0;
+            while i < v.len() {
+                if !v[i].unvalidated {
+                    i += 1;
+                    continue;
+                }
+                any = true;
+                let f = v[i].clone();
+                self.print_file(i + 1, &f, fb)?;
+                self.sprompt("|U1Validate? |U2(|U3Y|U2)es (|U3N|U2)o (|U3D|U2)elete (|U3Q|U2)uit: |U3")?;
+                match self.onek("YNDQ")? {
+                    'Y' => {
+                        v[i].unvalidated = false;
+                        changed = true;
+                    }
+                    'D' => {
+                        let _ = std::fs::remove_file(file_path(fb, &f.name));
+                        v.remove(i);
+                        changed = true;
+                        continue;
+                    }
+                    'Q' => {
+                        if changed {
+                            self.sh.db().put_files(&fb.file, &v)?;
+                        }
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            if changed {
+                self.sh.db().put_files(&fb.file, &v)?;
+            }
+        }
+        if !any {
+            self.sprint("|NL|U1No unvalidated files.")?;
+        }
+        Ok(())
+    }
+
+    /// `%8` (addgifspecs): prefix GIF descriptions with "(WxH,Nc)".
+    pub fn add_gif_specs(&mut self) -> io::Result<()> {
+        let Some(fb) = self.cur_fbase()? else { return Ok(()) };
+        let mut v = self.sh.db().files(&fb.file)?;
+        let mut n = 0;
+        for f in v.iter_mut().filter(|f| f.name.to_lowercase().ends_with(".gif") && !f.desc.starts_with('(')) {
+            let Ok(b) = std::fs::read(file_path(&fb, &f.name)) else { continue };
+            if let Some((x, y, c)) = gif_specs(&b) {
+                f.desc = format!("({x}x{y},{c}c) {}", f.desc).chars().take(54).collect();
+                n += 1;
+            }
+        }
+        self.sh.db().put_files(&fb.file, &v)?;
+        self.sprint(&format!("|NL|U1Added GifSpecs to |U3{n}|U1 file(s)."))
+    }
+
+    /// `%9` (packmessagebases): prune bases to their message limits.
+    pub fn pack_boards(&mut self) -> io::Result<()> {
+        self.sprint("|NL|U1Packing message bases...")?;
+        for b in self.cfg().boards.iter() {
+            let n = self.sh.db().prune(&b.file, b.max_msgs)?;
+            self.sprint(&format!("|U3{}|U1: removed |U3{n}|U1 message(s).", b.name))?;
+        }
+        Ok(())
+    }
+
+    /// `%$` / `%%` (dirf): raw directory of the current base.
+    pub fn raw_dir(&mut self, expanded: bool) -> io::Result<()> {
+        let Some(fb) = self.cur_fbase()? else { return Ok(()) };
+        self.sprint("|NL|U1Raw directory.")?;
+        let spec = self.ask_spec("")?;
+        let Ok(rd) = std::fs::read_dir(&fb.dl_path) else { return self.sprint("|12Bad download path.") };
+        let mut ents: Vec<_> = rd.flatten().filter(|e| wild(&spec, &e.file_name().to_string_lossy())).collect();
+        ents.sort_by_key(|e| e.file_name());
+        self.nl()?;
+        let mut line = String::new();
+        for e in &ents {
+            let name = e.file_name().to_string_lossy().to_string();
+            let md = e.metadata().ok();
+            if expanded {
+                let size = match &md {
+                    Some(m) if m.is_dir() => "<DIR>".to_string(),
+                    Some(m) => m.len().to_string(),
+                    None => "?".into(),
+                };
+                let when = md.and_then(|m| m.modified().ok()).map(|t| chrono::DateTime::<chrono::Local>::from(t).format("%m-%d-%y  %H:%M").to_string()).unwrap_or_default();
+                self.out(&format!("{name:<20} {size:>10}  {when}"))?;
+                self.nl()?;
+            } else {
+                line.push_str(&format!("{name:<16}"));
+                if line.len() >= 64 {
+                    self.out(&line)?;
+                    self.nl()?;
+                    line.clear();
+                }
+            }
+        }
+        if !line.is_empty() {
+            self.out(&line)?;
+            self.nl()?;
+        }
+        self.sprint(&format!("|U1{} file(s).", ents.len()))
+    }
+}
+
+/// Width, height and colour count from a GIF header (getgifspecs).
+fn gif_specs(b: &[u8]) -> Option<(u16, u16, u32)> {
+    if b.len() < 11 || !(b.starts_with(b"GIF87a") || b.starts_with(b"GIF89a")) {
+        return None;
+    }
+    Some((u16::from_le_bytes([b[6], b[7]]), u16::from_le_bytes([b[8], b[9]]), 1 << ((b[10] & 7) + 1)))
 }
 
 #[cfg(test)]
@@ -892,5 +1175,13 @@ mod tests {
         assert!(wild("F?O.*", "FOO"));
         assert!(wild("IMP*", "IMP71.ZIP"));
         assert!(!wild("IMP?", "IMP71"));
+    }
+
+    #[test]
+    fn gif() {
+        let mut h = b"GIF89a".to_vec();
+        h.extend_from_slice(&[0x40, 0x01, 0xc8, 0x00, 0xf7]);
+        assert_eq!(super::gif_specs(&h), Some((320, 200, 256)));
+        assert_eq!(super::gif_specs(b"PK\x03\x04......."), None);
     }
 }
