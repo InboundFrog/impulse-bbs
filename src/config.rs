@@ -52,10 +52,57 @@ pub struct Config {
     pub nuv_yes: u32,
     pub nuv_no: u32,
     pub boards: Vec<Board>,
+    pub fbases: Vec<FBase>,
+    /// External transfer protocols (PROTOCOL.DAT).
+    pub protocols: Vec<Protocol>,
+    /// Files and K a user may download per file / K uploaded (0 = no ratio).
+    pub dl_ratio: u32,
+    pub dlk_ratio: u32,
+    /// Charge file points for downloads, and credit this many per upload.
+    pub use_file_points: bool,
+    pub ul_points: i32,
+    /// Uploads stay hidden until a SysOp validates them (`%7`).
+    pub validate_uploads: bool,
     /// Message and file conferences (MCONF.DAT / FCONF.DAT), numbered from 1.
     pub msg_confs: Vec<Conf>,
     pub file_confs: Vec<Conf>,
     pub strings: Strings,
+}
+
+/// A file base (ulrec in UPLOADS.DAT).
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(default)]
+pub struct FBase {
+    pub name: String,
+    /// Storage name: `<data_path>/files/<file>.json`.
+    pub file: String,
+    pub dl_path: PathBuf,
+    /// Where uploads go; empty means `dl_path`.
+    pub ul_path: PathBuf,
+    pub acs: String,
+    pub ul_acs: String,
+    /// Needed to see who uploaded a file.
+    pub name_acs: String,
+    pub password: String,
+    /// 0 = no limit.
+    pub max_files: usize,
+    /// Downloads here don't count against ratios or points.
+    pub no_ratio: bool,
+    pub conf: usize,
+}
+
+/// External protocol (protrec). In the commands `%F` is the files to send,
+/// quoted and space-separated. Receives run in an empty directory.
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(default)]
+pub struct Protocol {
+    pub key: String,
+    pub name: String,
+    pub acs: String,
+    pub dl_cmd: String,
+    pub ul_cmd: String,
+    /// Can send several files at once.
+    pub batch: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -123,6 +170,11 @@ pub struct Strings {
     pub nuv_prompt: String,
     pub nuv_validated: String,
     pub nuv_deleted: String,
+    /// File listing prompt when there's no FILEP menu.
+    pub file_prompt: String,
+    /// `FF`: search by (W)ildcard or (S)tring.
+    pub file_search: String,
+    pub file_added: String,
 }
 
 impl Default for Config {
@@ -163,6 +215,17 @@ impl Default for Config {
             anon_pub_post: "s250".into(),
             anon_priv_post: "s250".into(),
             boards: vec![Board { name: "General".into(), file: "general".into(), post_acs: "s20".into(), ..Board::default() }],
+            fbases: vec![FBase { name: "Uploads".into(), file: "uploads".into(), dl_path: "data/files/uploads".into(), ..FBase::default() }],
+            protocols: vec![
+                Protocol { key: "Z".into(), name: "Zmodem".into(), dl_cmd: "sz -b -e %F".into(), ul_cmd: "rz -b -e".into(), batch: true, ..Protocol::default() },
+                Protocol { key: "Y".into(), name: "Ymodem".into(), dl_cmd: "sz -b --ymodem %F".into(), ul_cmd: "rz -b --ymodem".into(), batch: true, ..Protocol::default() },
+                Protocol { key: "X".into(), name: "Xmodem".into(), dl_cmd: "sz -b --xmodem %F".into(), ul_cmd: String::new(), ..Protocol::default() },
+            ],
+            dl_ratio: 0,
+            dlk_ratio: 0,
+            use_file_points: false,
+            ul_points: 1,
+            validate_uploads: false,
             msg_confs: Vec::new(),
             file_confs: Vec::new(),
             strings: Strings::default(),
@@ -194,6 +257,9 @@ impl Default for Strings {
             nuv_prompt: "|NL|U1Vote |U2(|U3Y|U2)es (|U3N|U2)o (|U3A|U2)bstain (|U3Q|U2)uit|U1: |U3".into(),
             nuv_validated: "|NL|U1The user has been validated.".into(),
             nuv_deleted: "|NL|U1The user has been deleted.".into(),
+            file_prompt: "|NL|U1Files |U2(|U3?|U2=help, |U3Enter|U2=more)|U1: |U3".into(),
+            file_search: "|U1Search by (|U3W|U1)ildcard, (|U3S|U1)tring or (|U3Q|U1)uit: |U3".into(),
+            file_added: "|U1Added to the batch queue.".into(),
         }
     }
 }
@@ -222,5 +288,5 @@ impl Config {
 /// Entry templates for the list settings, for the configuration editor.
 pub fn templates() -> Vec<(String, serde_json::Value)> {
     use crate::edit::tmpl;
-    vec![tmpl::<Board>("boards"), tmpl::<Conf>("msg_confs"), tmpl::<Conf>("file_confs")]
+    vec![tmpl::<Board>("boards"), tmpl::<FBase>("fbases"), tmpl::<Protocol>("protocols"), tmpl::<Conf>("msg_confs"), tmpl::<Conf>("file_confs")]
 }

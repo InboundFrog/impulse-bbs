@@ -59,6 +59,12 @@ pub struct User {
     pub last_read: BTreeMap<String, u64>,
     /// Board files left out of newscans (mzscan).
     pub no_scan: Vec<String>,
+    pub last_fbase: usize,
+    /// File base files left out of new file scans (fzscan).
+    pub no_fscan: Vec<String>,
+    /// File list columns (fflag): N name, S size, P points, D description,
+    /// E extended description, W uploader, T upload date, C download count.
+    pub list_fields: String,
 }
 
 impl Default for User {
@@ -102,6 +108,9 @@ impl Default for User {
             last_board: 0,
             last_read: BTreeMap::new(),
             no_scan: Vec::new(),
+            last_fbase: 0,
+            no_fscan: Vec::new(),
+            list_fields: "NSPDE".into(),
         }
     }
 }
@@ -181,6 +190,24 @@ pub struct Msg {
     pub unvalidated: bool,
 }
 
+/// A file in a file base (ulfrec + verbrec).
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(default)]
+pub struct FileRec {
+    pub name: String,
+    pub desc: String,
+    /// Extended description lines.
+    pub ext: Vec<String>,
+    pub points: i32,
+    pub downloads: u32,
+    pub size: u64,
+    pub owner: String,
+    pub owner_num: usize,
+    /// YYYY-MM-DD
+    pub date: String,
+    pub unvalidated: bool,
+}
+
 #[derive(Default)]
 pub struct Online {
     pub name: String,
@@ -216,6 +243,7 @@ fn store<T: Serialize + ?Sized>(p: &Path, v: &T) -> io::Result<()> {
 impl Db {
     pub fn open(dir: &Path) -> io::Result<Db> {
         fs::create_dir_all(dir.join("msgs"))?;
+        fs::create_dir_all(dir.join("files"))?;
         Ok(Db {
             dir: dir.to_path_buf(),
             users: load(&dir.join("users.json"))?,
@@ -275,6 +303,14 @@ impl Db {
         let mut v = self.msgs(file)?;
         v.retain(|m| m.id != id);
         store(&self.msg_path(file), &v)
+    }
+
+    pub fn files(&self, base: &str) -> io::Result<Vec<FileRec>> {
+        load(&self.dir.join("files").join(format!("{base}.json")))
+    }
+
+    pub fn put_files(&self, base: &str, v: &[FileRec]) -> io::Result<()> {
+        store(&self.dir.join("files").join(format!("{base}.json")), v)
     }
 
     /// Any JSON data file under the data directory (default if missing).
