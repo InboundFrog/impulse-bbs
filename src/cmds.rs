@@ -104,6 +104,7 @@ impl Session {
             ('C', 'F') => self.change_conf(true, data)?,
             ('C', 'E') => self.conf_editor()?,
             ('C', 'N') if data.trim().eq_ignore_ascii_case("F") => self.file_newscan()?,
+            ('C', 'N') if data.trim().eq_ignore_ascii_case("M") => self.newscan()?,
             ('C', 'N') => {
                 self.newscan()?;
                 self.file_newscan()?;
