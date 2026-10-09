@@ -103,7 +103,11 @@ impl Session {
             ('C', 'M') => self.change_conf(false, data)?,
             ('C', 'F') => self.change_conf(true, data)?,
             ('C', 'E') => self.conf_editor()?,
-            ('C', 'N') => self.newscan()?,
+            ('C', 'N') if data.trim().eq_ignore_ascii_case("F") => self.file_newscan()?,
+            ('C', 'N') => {
+                self.newscan()?;
+                self.file_newscan()?;
+            }
             ('M', 'A') => self.change_board(data)?,
             ('M', 'P') => self.post(self.board, None)?,
             ('M', 'S') => {
@@ -118,6 +122,26 @@ impl Session {
             ('M', 'Z') => self.newscan_boards()?,
             ('M', '$') => self.board_stats()?,
             ('M', '#') => self.sprint("|NL|U1Enter the number of the message base to change to it.")?,
+            ('F', 'A') => self.change_fbase(data)?,
+            ('F', 'L') => self.list_cur(data)?,
+            ('F', 'S') => self.search_names(data)?,
+            ('F', 'F') => self.find_files()?,
+            ('F', 'N') => self.file_newscan()?,
+            ('F', 'P') => self.new_scan_date()?,
+            ('F', 'D') => self.download_cmd(data)?,
+            ('F', 'U') => self.upload()?,
+            ('F', 'V') => self.view_cmd()?,
+            ('F', 'R') => self.remove_file()?,
+            ('F', 'Y') => self.file_stats()?,
+            ('F', 'K') => self.file_list_fields()?,
+            ('F', 'Z') => self.fscan_bases()?,
+            ('F', '#') => self.sprint("|NL|U1Enter the number of the file base to change to it.")?,
+            ('B', '?') => self.batch_info()?,
+            ('B', 'C') => self.batch_clear()?,
+            ('B', 'D') => self.batch_download()?,
+            ('B', 'L') => self.batch_list()?,
+            ('B', 'R') => self.batch_remove()?,
+            ('B', 'U') => self.upload()?,
             ('N', 'W') => self.whos_online()?,
             ('%', _) => {
                 if !self.check_sysop_pw()? {

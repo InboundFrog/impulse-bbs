@@ -72,6 +72,12 @@ pub struct Session {
     pub fconf: usize,
     /// Board files whose password was given this call.
     pub board_pw: Vec<String>,
+    pub fbase: usize,
+    pub fbase_pw: Vec<String>,
+    /// Batch download queue: (file base, file name).
+    pub batch: Vec<(usize, String)>,
+    /// New file scan date, the last call's date unless `FP` changes it.
+    pub new_date: String,
     /// `%XX` template variables (sysMciSet).
     pub vars: HashMap<String, String>,
     /// Header text for the `HDR` display file (`-W`, `%HS`).
@@ -151,6 +157,10 @@ pub fn run(sh: Arc<Shared>, stream: TcpStream, node: usize) {
         mconf: 0,
         fconf: 0,
         board_pw: Vec::new(),
+        fbase: 0,
+        fbase_pw: Vec::new(),
+        batch: Vec::new(),
+        new_date: String::new(),
         help: false,
         on_since: Instant::now(),
         lines: 0,
@@ -773,7 +783,8 @@ impl Session {
         }
         self.user.on_today += 1;
         self.user.logons += 1;
-        self.user.last_on = today;
+        self.new_date = std::mem::replace(&mut self.user.last_on, today);
+        self.fbase = self.user.last_fbase.min(self.cfg().fbases.len().saturating_sub(1));
         self.board = self.user.last_board.min(self.cfg().boards.len().saturating_sub(1));
         self.on_since = Instant::now();
         {
@@ -955,9 +966,15 @@ impl Session {
         if cmd == "?" {
             self.help = true;
         }
-        if !cmd.is_empty() && cmd.chars().all(|c| c.is_ascii_digit()) && self.menu.cmds.iter().any(|c| c.cmd == "M#") {
-            self.board_by_number(&cmd)?;
-            return Ok(String::new());
+        if !cmd.is_empty() && cmd.chars().all(|c| c.is_ascii_digit()) {
+            if self.menu.cmds.iter().any(|c| c.cmd == "M#") {
+                self.board_by_number(&cmd)?;
+                return Ok(String::new());
+            }
+            if self.menu.cmds.iter().any(|c| c.cmd == "F#") {
+                self.fbase_by_number(&cmd)?;
+                return Ok(String::new());
+            }
         }
         Ok(cmd)
     }
@@ -982,7 +999,7 @@ impl Session {
                 _ => long = true,
             }
         }
-        let areas = self.menu.cmds.iter().any(|c| c.cmd == "M#");
+        let areas = self.menu.cmds.iter().any(|c| c.cmd == "M#" || c.cmd == "F#");
         let mut ss = String::new();
         loop {
             let c = self.getkey()?.to_ascii_uppercase();

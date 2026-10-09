@@ -5,6 +5,7 @@ mod cmds;
 mod config;
 mod db;
 mod edit;
+mod files;
 mod menu;
 mod misc;
 mod msgs;
