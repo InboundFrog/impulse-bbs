@@ -33,6 +33,8 @@ pub struct User {
     pub ansi: bool,
     pub pause: bool,
     pub hotkeys: bool,
+    /// Full-screen editor rather than the line editor.
+    pub fse: bool,
     pub novice: bool,
     pub page_len: u16,
     pub colors: [u8; 10],
@@ -85,6 +87,7 @@ impl Default for User {
             ansi: true,
             pause: true,
             hotkeys: true,
+            fse: false,
             novice: true,
             page_len: 24,
             colors: DEFAULT_COLORS,

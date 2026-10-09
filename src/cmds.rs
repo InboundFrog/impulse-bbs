@@ -225,6 +225,7 @@ impl Session {
                 format!("|U1[|U3P|U1] Screen pausing   : |U3{}", yn(u.pause)),
                 format!("|U1[|U3H|U1] Hot keys         : |U3{}", yn(u.hotkeys)),
                 format!("|U1[|U3E|U1] Expert (no menus): |U3{}", yn(!u.novice)),
+                format!("|U1[|U3F|U1] Full-screen editor: |U3{}", yn(u.fse)),
                 format!("|U1[|U3L|U1] Screen length    : |U3{}", u.page_len),
                 "|U1[|U3W|U1] Change password".to_string(),
                 "|U1[|U3Q|U1] Quit".to_string(),
@@ -233,11 +234,12 @@ impl Session {
                 self.sprint(&l)?;
             }
             self.sprompt("|U1Choice: |U3")?;
-            match self.onek("APHELWQ\r")? {
+            match self.onek("APHEFLWQ\r")? {
                 'A' => self.user.ansi = !self.user.ansi,
                 'P' => self.user.pause = !self.user.pause,
                 'H' => self.user.hotkeys = !self.user.hotkeys,
                 'E' => self.user.novice = !self.user.novice,
+                'F' => self.user.fse = !self.user.fse,
                 'L' => {
                     self.sprompt("|U1Lines on your screen (5-99): |U3")?;
                     if let Ok(n @ 5..=99) = self.input(2)?.parse() {
@@ -363,7 +365,7 @@ impl Session {
             return self.sprint("|NL|12You are restricted from writing automessages.");
         }
         self.printf("AUTOWRT")?;
-        let Some(body) = self.editor(30, None)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
+        let Some(body) = self.editor(30, "All", "Automessage", None)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
         let anon = self.pynq("|U1Post anonymously? ", false)?;
         let mut lines = vec![if anon { format!("@{}", self.user.name) } else { self.user.name.clone() }];
         lines.extend(body);

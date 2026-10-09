@@ -8,6 +8,7 @@ mod doors;
 mod edit;
 mod events;
 mod files;
+mod fse;
 mod menu;
 mod misc;
 mod msgs;

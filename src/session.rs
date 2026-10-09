@@ -813,6 +813,7 @@ impl Session {
         self.sprompt("|U1Sex (M/F): |U3")?;
         u.sex = self.onek("MF")?.to_string();
         u.ansi = self.pynq("|U1Does your terminal support ANSI color? ", true)?;
+        u.fse = u.ansi;
         loop {
             self.sprompt("|U1Choose a password (4+ chars): |U3")?;
             let p1 = self.input_pw(20)?;

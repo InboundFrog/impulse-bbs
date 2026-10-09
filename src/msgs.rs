@@ -10,7 +10,7 @@ fn re(s: &str) -> String {
 }
 
 /// Quote prefix from a name's initials: "Joe Bloggs" -> " JB> ".
-fn quote_prefix(name: &str) -> String {
+pub fn quote_prefix(name: &str) -> String {
     let ini: String = name.split_whitespace().filter_map(|w| w.chars().next()).take(2).collect();
     format!(" {}> ", ini.to_uppercase())
 }
@@ -231,7 +231,7 @@ impl Session {
     // ---- reading ------------------------------------------------------------
 
     /// Stand-in name for an anonymous sender (what00).
-    fn anon_name(m: &Msg) -> Option<&str> {
+    pub fn anon_name(m: &Msg) -> Option<&str> {
         match m.anon {
             1 | 2 => Some("Anonymous"),
             3 => Some("Abby"),
@@ -512,8 +512,11 @@ impl Session {
     // ---- writing ------------------------------------------------------------
 
     /// Line editor: `/S` saves, `/A` aborts, `/L` lists, `/Q` quotes.
-    // ponytail: no word wrap or full-screen editor yet
-    pub fn editor(&mut self, max: usize, quote: Option<&Msg>) -> io::Result<Option<Vec<String>>> {
+    /// ANSI callers who picked it get the full-screen editor instead.
+    pub fn editor(&mut self, max: usize, to: &str, subject: &str, quote: Option<&Msg>) -> io::Result<Option<Vec<String>>> {
+        if self.user.ansi && self.user.fse {
+            return self.fse(max, to, subject, quote);
+        }
         let q = if quote.is_some() { ", |U3/Q|U1 quotes" } else { "" };
         self.sprint(&format!("|NL|U1Enter up to |U3{max}|U1 lines. |U3/S|U1 saves, |U3/A|U1 aborts, |U3/L|U1 lists{q}."))?;
         let mut lines: Vec<String> = Vec::new();
@@ -531,22 +534,9 @@ impl Session {
                     }
                 }
                 "/Q" if quote.is_some() => {
-                    let m = quote.unwrap();
-                    let pre = quote_prefix(Self::anon_name(m).unwrap_or(&m.from));
-                    for (i, l) in m.body.iter().enumerate() {
-                        self.sprompt(&format!("|U2{:>3}: |U0", i + 1))?;
-                        self.out(&strip_pipes(l))?;
-                        self.nl()?;
-                    }
-                    self.sprompt(&format!("|U1Quote from line (1-{}): |U3", m.body.len()))?;
-                    let a = self.input(3)?.parse::<usize>().unwrap_or(0);
-                    self.sprompt(&format!("|U1To line ({a}-{}): |U3", m.body.len()))?;
-                    let z = self.input(3)?.parse::<usize>().unwrap_or(a).min(m.body.len());
-                    if a >= 1 {
-                        for l in m.body.iter().take(z).skip(a - 1) {
-                            if lines.len() < max {
-                                lines.push(format!("{pre}{}", strip_pipes(l)).chars().take(78).collect());
-                            }
+                    for l in self.pick_quote(quote.unwrap())? {
+                        if lines.len() < max {
+                            lines.push(l);
                         }
                     }
                 }
@@ -628,7 +618,7 @@ impl Session {
         }
         let (anon, alias) = self.ask_anon(Some(&board))?;
         let max = self.cfg().max_message_lines;
-        let Some(mut body) = self.editor(max, reply)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
+        let Some(mut body) = self.editor(max, &to, &subject, reply)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
         if !self.acs(&board.mci_acs) {
             subject = strip_pipes(&subject);
             body = body.iter().map(|l| strip_pipes(l)).collect();
@@ -691,7 +681,7 @@ impl Session {
     pub fn email_to(&mut self, n: usize, to: String, subject: String, quote: Option<&Msg>) -> io::Result<()> {
         let (anon, alias) = self.ask_anon(None)?;
         let max = self.cfg().max_message_lines;
-        let Some(body) = self.editor(max, quote)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
+        let Some(body) = self.editor(max, &to, &subject, quote)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
         let m = Msg { anon, alias, reply_to: quote.map_or(0, |q| q.id), ..self.letter(subject, body) };
         self.deliver(&[(n, to)], m)?;
         self.sprint("|U1Mail sent.")
@@ -793,7 +783,7 @@ impl Session {
             return self.sprint(&self.cfg().strings.aborted.clone());
         }
         let max = self.cfg().max_message_lines;
-        let Some(body) = self.editor(max, None)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
+        let Some(body) = self.editor(max, "Mass mail", &subject, None)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
         let m = self.letter(subject, body);
         self.deliver(&to, m)?;
         self.log(&format!("Mass-mail sent to {} users", to.len()));
