@@ -73,6 +73,11 @@ pub struct Config {
     pub ul_points: i32,
     /// Uploads stay hidden until a SysOp validates them (`%7`).
     pub validate_uploads: bool,
+    /// Upload checks on .ZIP files (ULCHECK.PAS): a comment file put on with
+    /// `zip -z` and a file (an ad, say) added to each; empty = skip.
+    /// Names listed in `<text_path>/REMOVE.TXT` are deleted from uploads.
+    pub ul_comment: String,
+    pub ul_add: String,
     /// Message and file conferences (MCONF.DAT / FCONF.DAT), numbered from 1.
     pub msg_confs: Vec<Conf>,
     pub file_confs: Vec<Conf>,
@@ -274,6 +279,8 @@ impl Default for Config {
             use_file_points: false,
             ul_points: 1,
             validate_uploads: false,
+            ul_comment: String::new(),
+            ul_add: String::new(),
             msg_confs: Vec::new(),
             file_confs: Vec::new(),
             strings: Strings::default(),

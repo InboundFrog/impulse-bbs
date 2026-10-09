@@ -772,6 +772,35 @@ impl Session {
         Some((first, lines.take(19).collect()))
     }
 
+    /// Upload checks (ulexamine): test a zip, strip the REMOVE.TXT names,
+    /// add the comment and ad file. False if the archive is damaged.
+    fn ul_check(&mut self, p: &Path) -> io::Result<bool> {
+        if !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")) {
+            return Ok(true);
+        }
+        self.printf("ULCHECK")?;
+        let c = self.cfg();
+        let run = |cmd: &mut Command| cmd.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success());
+        if !run(Command::new("unzip").arg("-tqq").arg(p)) {
+            return Ok(false);
+        }
+        if let Some(rm) = find_ci(&c.text_path, "REMOVE.TXT") {
+            let names: Vec<String> = std::fs::read_to_string(rm)?.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+            if !names.is_empty() {
+                run(Command::new("zip").arg("-dq").arg(p).args(&names));
+            }
+        }
+        if !c.ul_comment.is_empty()
+            && let Ok(f) = std::fs::File::open(&c.ul_comment)
+        {
+            run(Command::new("zip").arg("-zq").arg(p).stdin(f));
+        }
+        if !c.ul_add.is_empty() {
+            run(Command::new("zip").arg("-jq").arg(p).arg(&c.ul_add));
+        }
+        Ok(true)
+    }
+
     /// `FU` / `BU` (batchul): receive files into the current base.
     pub fn upload(&mut self) -> io::Result<()> {
         let b = self.fbase;
@@ -801,6 +830,11 @@ impl Session {
                 let _ = std::fs::remove_file(&path);
                 continue;
             }
+            let sound = self.ul_check(&path)?;
+            if !sound {
+                self.sprint(&format!("|12{name} failed its integrity test; it will wait for the SysOp."))?;
+                self.log(&format!("Upload {name} failed the archive test"));
+            }
             let size = std::fs::metadata(&path)?.len();
             let (desc, ext) = match Self::zip_diz(&path) {
                 Some(d) => d,
@@ -826,7 +860,7 @@ impl Session {
                 owner: self.user.name.clone(),
                 owner_num: self.unum,
                 date: today(),
-                unvalidated: cfg.validate_uploads && !self.is_sysop(),
+                unvalidated: !sound || (cfg.validate_uploads && !self.is_sysop()),
                 ..FileRec::default()
             };
             {
