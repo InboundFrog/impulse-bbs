@@ -915,6 +915,9 @@ impl Session {
         if self.printf("logon")? {
             self.pause()?;
         }
+        if self.user.prompt == 0 && !self.cfg().prompts.is_empty() {
+            self.choose_prompt()?;
+        }
         if self.nuv_pending() {
             self.new_user_vote()?;
         }
@@ -1101,7 +1104,11 @@ impl Session {
             if self.menu.flags.contains('T') {
                 self.sprint("|U2Time Left: |TL")?;
             }
-            let p = self.menu.prompt.clone();
+            let cfg = self.cfg();
+            let p = match cfg.prompts.get(usize::from(self.user.prompt).wrapping_sub(1)) {
+                Some(p) if self.user.prompt <= 4 => p.prompt.clone(),
+                _ => self.menu.prompt.clone(),
+            };
             match p.strip_prefix("~~") {
                 Some(f) => {
                     self.printf(f)?;

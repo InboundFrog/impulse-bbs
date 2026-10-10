@@ -60,6 +60,8 @@ pub struct Config {
     /// New-user questions in the order asked (NUORDER.DAT, MAKENUO.PAS):
     /// real_name city phone birthday sex ansi.
     pub new_user_order: Vec<String>,
+    /// Up to four prompt choices; empty means everyone gets the menu prompts.
+    pub prompts: Vec<Prompt>,
     pub boards: Vec<Board>,
     pub fbases: Vec<FBase>,
     /// External transfer protocols (PROTOCOL.DAT).
@@ -139,6 +141,14 @@ pub struct Event {
     pub days: Vec<u8>,
     /// Run monthly on this day instead, 0 = not monthly.
     pub day_of_month: u8,
+}
+
+/// A menu prompt users can pick instead of each menu's own (PROMPTS.DAT).
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(default)]
+pub struct Prompt {
+    pub name: String,
+    pub prompt: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -286,6 +296,7 @@ impl Default for Config {
             ul_comment: String::new(),
             ul_add: String::new(),
             msg_confs: Vec::new(),
+            prompts: Vec::new(),
             file_confs: Vec::new(),
             strings: Strings::default(),
         }
@@ -354,5 +365,6 @@ pub fn templates() -> Vec<(String, serde_json::Value)> {
         tmpl::<Conf>("msg_confs"),
         tmpl::<Conf>("file_confs"),
         tmpl::<Event>("events"),
+        tmpl::<Prompt>("prompts"),
     ]
 }

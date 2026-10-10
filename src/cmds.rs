@@ -230,6 +230,8 @@ impl Session {
                 format!("|U1[|U3E|U1] Expert (no menus): |U3{}", yn(!u.novice)),
                 format!("|U1[|U3F|U1] Full-screen editor: |U3{}", yn(u.fse)),
                 format!("|U1[|U3L|U1] Screen length    : |U3{}", u.page_len),
+                format!("|U1[|U3G|U1] Autosig          : |U3{}", u.autosig),
+                format!("|U1[|U3M|U1] Menu prompt      : |U3{}", self.prompt_name()),
                 "|U1[|U3W|U1] Change password".to_string(),
                 "|U1[|U3Q|U1] Quit".to_string(),
             ];
@@ -237,7 +239,7 @@ impl Session {
                 self.sprint(&l)?;
             }
             self.sprompt("|U1Choice: |U3")?;
-            match self.onek("APHEFLWQ\r")? {
+            match self.onek("APHEFLGMWQ\r")? {
                 'A' => self.user.ansi = !self.user.ansi,
                 'P' => self.user.pause = !self.user.pause,
                 'H' => self.user.hotkeys = !self.user.hotkeys,
@@ -249,12 +251,63 @@ impl Session {
                         self.user.page_len = n;
                     }
                 }
+                'G' => self.ask_autosig()?,
+                'M' => self.choose_prompt()?,
                 'W' => self.change_pw()?,
                 _ => break,
             }
         }
         self.save_user();
         Ok(())
+    }
+
+    fn ask_autosig(&mut self) -> io::Result<()> {
+        self.sprompt("|U1Autosig (Enter for none): |U3")?;
+        self.user.autosig = self.input(40)?;
+        Ok(())
+    }
+
+    fn prompt_name(&self) -> String {
+        let cfg = self.cfg();
+        match cfg.prompts.get(usize::from(self.user.prompt).wrapping_sub(1)) {
+            Some(p) if self.user.prompt <= 4 => p.name.clone(),
+            _ => "MNU Default".into(),
+        }
+    }
+
+    /// choosaprompt (COMMON5.PAS): pick one of the SysOp's prompts or the menus' own.
+    pub fn choose_prompt(&mut self) -> io::Result<()> {
+        let prompts = self.cfg().prompts.clone();
+        if prompts.is_empty() {
+            return self.sprint("|U1There are no prompts to choose from.");
+        }
+        let n = prompts.len().min(4);
+        let keys: String = (1..=n).map(|i| char::from(b'0' + i as u8)).chain("5VQ\r".chars()).collect();
+        loop {
+            if !self.printf("prompt")? {
+                self.sprint("|NL|U5Choose your prompt type|NL")?;
+                for (i, p) in prompts.iter().take(n).enumerate() {
+                    self.sprint(&format!("|U3[{}] |U1{}", i + 1, p.name))?;
+                }
+                self.sprint("|U3[5] |U1MNU Default|NL")?;
+            }
+            self.sprompt("|U1Choice (|U3V|U1 views): |U3")?;
+            match self.onek(&keys)? {
+                'V' => {
+                    self.sprompt("|NL|U1View which: |U3")?;
+                    let c = self.onek(&keys[..n + 1])?;
+                    let p = prompts.get(usize::from(c as u8 - b'1')).map_or_else(|| self.menu.prompt.clone(), |p| p.prompt.clone());
+                    self.nl()?;
+                    self.sprint(&p)?;
+                    self.pause()?;
+                }
+                c @ '1'..='5' => {
+                    self.user.prompt = c as u8 - b'0';
+                    return Ok(());
+                }
+                _ => return Ok(()),
+            }
+        }
     }
 
     fn change_pw(&mut self) -> io::Result<()> {
@@ -277,7 +330,6 @@ impl Session {
     /// UCONFIG.PAS (OBV/2 style): NEWINF.ANS drawn with `%OA`-`%OJ` values in
     /// place, `%OP` where the prompt goes; edits happen where each value sits.
     /// False if there's no NEWINF.ANS.
-    // ponytail: name (A) is shown but not editable; no autosig (G) or prompt sets (J)
     pub fn obv_config(&mut self) -> io::Result<bool> {
         let Some(path) = crate::session::find_ci(&self.cfg().text_path, "NEWINF.ANS") else { return Ok(false) };
         let raw: String = std::fs::read(path)?.iter().map(|&b| b as char).collect();
@@ -292,10 +344,10 @@ impl Session {
                 ("OD", tf(u.ansi)),
                 ("OE", tf(u.hotkeys)),
                 ("OF", tf(u.pause)),
-                ("OG", String::new()),
+                ("OG", u.autosig.clone()),
                 ("OH", tf(u.novice)),
                 ("OI", "*".repeat(8)),
-                ("OJ", String::new()),
+                ("OJ", self.prompt_name()),
             ];
             let pos = crate::fse::ansi_marks(&raw, &vals);
             for (k, v) in vals {
@@ -310,9 +362,34 @@ impl Session {
                 s.out(&format!("\x1b[{y};{x}H"))
             };
             go(self, "OP")?;
-            self.sprompt("|U1Change which (|U3A-I|U1, |U3Q|U1 quits)? |U3")?;
+            self.sprompt("|U1Change which (|U3A-J|U1, |U3Q|U1 quits)? |U3")?;
             let c = self.getkey()?.to_ascii_uppercase();
             match c {
+                'A' => {
+                    go(self, "OA")?;
+                    let name = self.input_caps(36)?;
+                    let taken = self.sh.db().find_user(&name).is_some_and(|n| n != self.unum);
+                    if !name.is_empty() && !taken && name.parse::<usize>().is_err() {
+                        self.log(&format!("Changed handle to {name}"));
+                        if let Some(o) = self.sh.db().online.get_mut(&self.node) {
+                            o.name = name.clone();
+                        }
+                        self.user.name = name;
+                    }
+                }
+                'G' => {
+                    go(self, "OG")?;
+                    self.user.autosig = self.input(40)?;
+                }
+                'J' => {
+                    // cycles 1-4 then the menu's own, like EditOp 'J'
+                    let n = self.cfg().prompts.len().min(4) as u8;
+                    self.user.prompt = match self.user.prompt {
+                        p if p < n => p + 1,
+                        5 if n > 0 => 1,
+                        _ => 5,
+                    };
+                }
                 'B' => {
                     go(self, "OB")?;
                     if let Ok(n @ 5..=99) = self.input(2)?.parse() {

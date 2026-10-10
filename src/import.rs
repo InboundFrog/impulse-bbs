@@ -31,9 +31,13 @@ impl R<'_> {
     }
     /// string[n]
     fn s(&mut self, n: usize) -> String {
+        self.s_raw(n).trim().to_string()
+    }
+    /// string[n] with its spaces kept, for prompts.
+    fn s_raw(&mut self, n: usize) -> String {
         let raw = self.take(n + 1);
         let len = (raw[0] as usize).min(n);
-        raw[1..=len].iter().map(|&c| c as char).collect::<String>().trim().to_string()
+        raw[1..=len].iter().map(|&c| c as char).collect()
     }
     fn u8(&mut self) -> u8 {
         self.take(1)[0]
@@ -91,10 +95,10 @@ fn user(b: &[u8], boards: &[Board], fbases: &[FBase]) -> (User, Vec<u16>) {
     u.city_state = r.s(30);
     r.s(10);
     r.skip(31);
-    r.s(40); // autosig
+    u.autosig = r.s(40);
     r.skip(41);
     u.note = r.s(39);
-    r.u8();
+    u.prompt = r.u8();
     u.locked_out = r.u8() != 0;
     u.deleted = r.u8() != 0;
     u.locked_file = r.s(8);
@@ -335,6 +339,11 @@ pub fn run(dir: &Path, cfg_path: &str) -> Result<String, String> {
     if let Some(b) = read("BOARDS.DAT") {
         cfg.boards = records(&b, BOARD_LEN).map(board).filter(|b| !b.file.is_empty()).collect();
         out.push(format!("{} message bases", cfg.boards.len()));
+    }
+    if let Some(b) = read("PROMPTS.DAT").filter(|b| b.len() >= 4 * (81 + 21)) {
+        let mut r = R { b: &b, p: 0 };
+        cfg.prompts = (0..4).map(|_| crate::config::Prompt { prompt: r.s_raw(80), name: r.s(20) }).filter(|p| !p.prompt.is_empty()).collect();
+        out.push(format!("{} prompts", cfg.prompts.len()));
     }
     let mut dirs = Vec::new();
     if let Some(b) = read("UPLOADS.DAT") {

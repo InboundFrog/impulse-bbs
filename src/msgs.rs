@@ -619,6 +619,7 @@ impl Session {
         let (anon, alias) = self.ask_anon(Some(&board))?;
         let max = self.cfg().max_message_lines;
         let Some(mut body) = self.editor(max, &to, &subject, reply)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
+        self.sign(&mut body, anon != 0);
         if !self.acs(&board.mci_acs) {
             subject = strip_pipes(&subject);
             body = body.iter().map(|l| strip_pipes(l)).collect();
@@ -678,10 +679,18 @@ impl Session {
         self.email_to(n, to_name, subject, None)
     }
 
+    /// Add the autosig after a blank line, as MAIL1.PAS did; not on anonymous messages.
+    fn sign(&self, body: &mut Vec<String>, anon: bool) {
+        if !self.user.autosig.is_empty() && !anon {
+            body.extend([String::new(), self.user.autosig.clone()]);
+        }
+    }
+
     pub fn email_to(&mut self, n: usize, to: String, subject: String, quote: Option<&Msg>) -> io::Result<()> {
         let (anon, alias) = self.ask_anon(None)?;
         let max = self.cfg().max_message_lines;
-        let Some(body) = self.editor(max, &to, &subject, quote)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
+        let Some(mut body) = self.editor(max, &to, &subject, quote)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
+        self.sign(&mut body, anon != 0);
         let m = Msg { anon, alias, reply_to: quote.map_or(0, |q| q.id), ..self.letter(subject, body) };
         self.deliver(&[(n, to)], m)?;
         self.sprint("|U1Mail sent.")
@@ -783,7 +792,8 @@ impl Session {
             return self.sprint(&self.cfg().strings.aborted.clone());
         }
         let max = self.cfg().max_message_lines;
-        let Some(body) = self.editor(max, "Mass mail", &subject, None)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
+        let Some(mut body) = self.editor(max, "Mass mail", &subject, None)? else { return self.sprint(&self.cfg().strings.aborted.clone()) };
+        self.sign(&mut body, false);
         let m = self.letter(subject, body);
         self.deliver(&to, m)?;
         self.log(&format!("Mass-mail sent to {} users", to.len()));

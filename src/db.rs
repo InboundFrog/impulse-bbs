@@ -24,6 +24,10 @@ pub struct User {
     pub sex: String,
     pub city_state: String,
     pub note: String,
+    /// Added to the end of posts and letters (MAIL1.PAS).
+    pub autosig: String,
+    /// Chosen menu prompt (choosaprompt): 1-4 from `prompts`, 5 the menu's own, 0 not chosen yet.
+    pub prompt: u8,
     pub sl: u8,
     pub dsl: u8,
     /// AR flags, letters A-Z.
@@ -80,6 +84,8 @@ impl Default for User {
             sex: String::new(),
             city_state: String::new(),
             note: String::new(),
+            autosig: String::new(),
+            prompt: 0,
             sl: 0,
             dsl: 0,
             ar: String::new(),
