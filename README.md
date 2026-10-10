@@ -69,10 +69,14 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 ## Running a system
 
 - **Lines:** `telnet = false` turns off the telnet listener. Each `[[serial]]`
-  entry (`device`, `baud` 300-115200) answers a direct-connect terminal at
-  8N1: a key wakes it, the caller gets the lowest free node, and the port
-  re-arms after logoff. Ports not listed are never opened. ACS `B<n>` checks
-  a serial caller's baud (n × 100); telnet callers always pass.
+  entry (`device`, `baud` 300-115200, `rts_cts`) answers at 8N1 and gives
+  the caller the lowest free node. Ports not listed are never opened.
+  A direct-connect terminal wakes on a key. With `modem = true` the port
+  is a dial-in modem (MODEM.DAT): `init` must get `OK`, `RING` is
+  answered with `answer`, the caller's rate comes from `CONNECT`, a dropped
+  carrier ends the call, and afterwards DTR is dropped and `hangup` sent.
+  The modem is re-initialised after `init_minutes` without a call. ACS
+  `B<n>` checks a serial caller's rate (n × 100); telnet callers always pass.
 - **Setting up:** `impulse init [dir]` writes the stock config, menus and
   display files (INSTALL). `impulse clean [config]` deletes every user but
   #1 and the NUV queue (MAKECLEA). `new_user_order` sets which new-user
@@ -96,8 +100,9 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 
 ## Deliberate differences
 
-- Telnet and raw serial lines replace modems and FOSSIL: there's no
-  modem init, `ATA` or carrier detect. There's one thread per node.
+- Telnet and Unix serial ports replace FOSSIL; modems only answer (no
+  dial-out or off-hook). Doors still talk over pipes, so drop files say
+  `TELNET`. There's one thread per node.
 - Passwords are stored as Argon2 hashes and are case-sensitive; logons also
   try the password in capitals, which is how Impulse stored them, so
   imported users keep working.

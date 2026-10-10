@@ -160,17 +160,36 @@ pub struct SlRatio {
     pub kb: u32,
 }
 
-/// A serial port callers may use (a direct-connect terminal).
+/// A serial port callers may use: a direct-connect terminal, or a dial-in
+/// modem (MODEM.DAT's strings; `~` pauses, `|` is a CR).
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct SerialPort {
     pub device: PathBuf,
+    /// Port (DTE) rate; with a modem, the caller's rate comes from CONNECT.
     pub baud: u32,
+    /// RTS/CTS hardware flow control.
+    pub rts_cts: bool,
+    pub modem: bool,
+    pub init: String,
+    pub answer: String,
+    pub hangup: String,
+    /// Re-init the modem after this many minutes without a call, 0 = never.
+    pub init_minutes: u64,
 }
 
 impl Default for SerialPort {
     fn default() -> Self {
-        SerialPort { device: "/dev/ttyUSB0".into(), baud: 9600 }
+        SerialPort {
+            device: "/dev/ttyUSB0".into(),
+            baud: 9600,
+            rts_cts: false,
+            modem: false,
+            init: "ATZ|~ATE0V1Q0S0=0".into(),
+            answer: "ATA".into(),
+            hangup: "~~~+++~~~ATH0".into(),
+            init_minutes: 30,
+        }
     }
 }
 

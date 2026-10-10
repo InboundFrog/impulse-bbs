@@ -6,10 +6,16 @@ sysop_name = "SysOp"
 telnet = true            # false: serial callers only
 listen = "0.0.0.0:2323"
 max_nodes = 8
-# Serial terminals (8N1, no flow control). Only ports listed here are answered.
+# Serial lines (8N1). Only ports listed here are answered.
 # [[serial]]
 # device = "/dev/ttyUSB0"
-# baud = 9600            # 300..115200
+# baud = 9600            # 300..115200; a modem's caller rate comes from CONNECT
+# rts_cts = false        # hardware flow control (use it with modems)
+# modem = false          # true: dial-in modem; answers RING, watches carrier
+# init = "ATZ|~ATE0V1Q0S0=0"   # ~ = half-second pause, | = CR; must reply OK
+# answer = "ATA"
+# hangup = "~~~+++~~~ATH0"     # after dropping DTR
+# init_minutes = 30      # re-init after this long without a call, 0 = never
 
 data_path = "data"     # users, messages, logs (created on first run)
 menu_path = "menus"    # *.MNU menu files (Impulse text format)
