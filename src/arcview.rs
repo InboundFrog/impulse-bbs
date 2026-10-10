@@ -55,22 +55,44 @@ fn zip(b: &[u8]) -> Option<Vec<Entry>> {
     Some(v)
 }
 
-// ponytail: level 0/1 headers only (what LZHVIEW read); level 2 (u16 size) stops the listing
 fn lzh(b: &[u8]) -> Option<Vec<Entry>> {
     let (mut p, mut v) = (0, vec![]);
-    while let Some(&hs) = b.get(p).filter(|&&h| h > 0) {
-        let nl = *b.get(p + 21)? as usize;
+    while b.get(p).is_some_and(|&h| h > 0) {
         let csize = u32_at(b, p + 7)?;
+        let level = *b.get(p + 20)?;
+        let (name, dos, hs) = if level == 2 {
+            // header size is a word; the name is extended header 1; time is Unix
+            let (mut name, mut q, mut next) = (&b[0..0], p + 26, u16_at(b, p + 24)? as usize);
+            while next > 2 {
+                if *b.get(q)? == 1 {
+                    name = b.get(q + 1..q + next - 2)?;
+                }
+                (q, next) = (q + next, u16_at(b, q + next - 2)? as usize);
+            }
+            (name, unix_dos(u32_at(b, p + 15)?), u16_at(b, p)? as usize)
+        } else {
+            let nl = *b.get(p + 21)? as usize;
+            (b.get(p + 22..p + 22 + nl)?, u32_at(b, p + 15)?, b[p] as usize + 2)
+        };
         v.push(Entry {
-            name: String::from_utf8_lossy(b.get(p + 22..p + 22 + nl)?).into(),
+            name: String::from_utf8_lossy(name).into(),
             method: String::from_utf8_lossy(b.get(p + 3..p + 6)?).into(),
             size: u32_at(b, p + 11)?,
             csize,
-            dos: u32_at(b, p + 15)?,
+            dos,
         });
-        p += hs as usize + 2 + csize as usize;
+        p += hs + csize as usize;
     }
     Some(v)
+}
+
+/// Unix time as an MS-DOS packed date and time (local time).
+fn unix_dos(t: u32) -> u32 {
+    use chrono::{Datelike, Timelike};
+    let Some(d) = chrono::DateTime::from_timestamp(t.into(), 0) else { return 0 };
+    let d = d.with_timezone(&chrono::Local);
+    let date = ((d.year() - 1980).max(0) as u32) << 9 | d.month() << 5 | d.day();
+    date << 16 | d.hour() << 11 | d.minute() << 5 | (d.second() / 2)
 }
 
 fn arj(b: &[u8]) -> Option<Vec<Entry>> {
@@ -125,6 +147,22 @@ mod tests {
         // 1994-03-05 14:30 in DOS form
         let dos: u32 = ((14 << 9 | 3 << 5 | 5) << 16) | (14 << 11 | 30 << 5);
         assert_eq!(dos_dt(dos), ("03/05/94".into(), "02:30p".into()));
+
+        // level 2: word header size, name in extended header 1
+        let mut l2 = vec![0u8; 26];
+        l2[2..7].copy_from_slice(b"-lh0-");
+        l2[7..11].copy_from_slice(&2u32.to_le_bytes());
+        l2[11..15].copy_from_slice(&2u32.to_le_bytes());
+        l2[20] = 2;
+        l2[24] = 8; // first extended header: type, "C.TXT", next size
+        l2.extend([1]);
+        l2.extend(b"C.TXT");
+        l2.extend([0, 0]);
+        let hs = l2.len() as u16;
+        l2[0..2].copy_from_slice(&hs.to_le_bytes());
+        l2.extend(b"ok\0");
+        let v = list(&l2).unwrap();
+        assert_eq!((v.len(), v[0].name.as_str(), v[0].size), (1, "C.TXT", 2));
 
         let mut lzh = vec![0u8; 22];
         lzh[0] = 22 + 5 + 2 - 2; // header size excludes the first two bytes
