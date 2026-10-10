@@ -554,15 +554,15 @@ impl Session {
     }
 
     /// Ratio check for `n` more files of `k` kilobytes (checkfileratio).
-    // ponytail: one ratio for everyone, not Impulse's per-SL tables
     fn ratio_ok(&self, n: u32, k: u64) -> bool {
         let c = self.cfg();
         let u = &self.user;
-        if self.is_sysop() || u.ac.contains('1') {
+        if self.is_sysop() || u.ac.contains('1') || (!c.no_ratio_acs.is_empty() && self.acs(&c.no_ratio_acs)) {
             return true;
         }
-        let files = c.dl_ratio == 0 || u.downloads + n <= (u.uploads + 1) * c.dl_ratio;
-        let kb = c.dlk_ratio == 0 || u.dk + k <= (u.uk + 1) * c.dlk_ratio as u64;
+        let (fr, kr) = c.sl_ratios.iter().filter(|r| r.min_sl <= u.sl).max_by_key(|r| r.min_sl).map_or((c.dl_ratio, c.dlk_ratio), |r| (r.files, r.kb));
+        let files = fr == 0 || u.downloads + n <= (u.uploads + 1) * fr;
+        let kb = kr == 0 || u.dk + k <= (u.uk + 1) * kr as u64;
         files && kb
     }
 

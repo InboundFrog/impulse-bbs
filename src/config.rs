@@ -73,6 +73,11 @@ pub struct Config {
     /// Files and K a user may download per file / K uploaded (0 = no ratio).
     pub dl_ratio: u32,
     pub dlk_ratio: u32,
+    /// Per-SL overrides of the two ratios (dlratio/dlkratio[sl]): the entry
+    /// with the highest `min_sl` at or below the user's SL applies.
+    pub sl_ratios: Vec<SlRatio>,
+    /// Users matching this ACS skip ratios (nodlratio).
+    pub no_ratio_acs: String,
     /// Charge file points for downloads, and credit this many per upload.
     pub use_file_points: bool,
     pub ul_points: i32,
@@ -141,6 +146,14 @@ pub struct Event {
     pub days: Vec<u8>,
     /// Run monthly on this day instead, 0 = not monthly.
     pub day_of_month: u8,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(default)]
+pub struct SlRatio {
+    pub min_sl: u8,
+    pub files: u32,
+    pub kb: u32,
 }
 
 /// A menu prompt users can pick instead of each menu's own (PROMPTS.DAT).
@@ -290,6 +303,8 @@ impl Default for Config {
             qwk_max: 500,
             dl_ratio: 0,
             dlk_ratio: 0,
+            sl_ratios: Vec::new(),
+            no_ratio_acs: String::new(),
             use_file_points: false,
             ul_points: 1,
             validate_uploads: false,
@@ -366,5 +381,6 @@ pub fn templates() -> Vec<(String, serde_json::Value)> {
         tmpl::<Conf>("file_confs"),
         tmpl::<Event>("events"),
         tmpl::<Prompt>("prompts"),
+        tmpl::<SlRatio>("sl_ratios"),
     ]
 }
