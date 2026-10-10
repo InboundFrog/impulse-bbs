@@ -122,8 +122,15 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
   in table `kv` (`name`, `body` as text, so `body::jsonb` queries work),
   the log in `log`, rows older than `back_sysop_logs` days are deleted.
   Uploads, traps, ISL files and QWK packets stay on disk under `data_path`.
-  `import` and `clean` use the database too. Existing `data/*.json` is not
-  migrated: import or start fresh.
+  `import` and `clean` use the database too.
+- **Migrating:** with `IMPULSE_DATABASE_URL` set, `impulse migrate to-pg
+  [config]` copies the config file, the data documents and the SysOp logs
+  (`sysop*.log`) into an empty database, tars and gzips them into
+  `archive/yyyymmdd-data.tar.gz`, then deletes them, so only one copy is
+  live. Log lines older than `back_sysop_logs` days are pruned on the
+  next log write (the archive keeps them). `impulse migrate to-files
+  [config]` writes the config, data and log (as one `sysop.log`) back to
+  disk, refusing to overwrite anything, then removes them from PostgreSQL.
 - **Importing a 7.1 system:** `impulse import <dir with USER.LST etc.> [config]`
   into a fresh `data_path`. Users (numbers, stats, flags, colours), message
   and file bases and `*.DIR` file lists come across; the config is backed up

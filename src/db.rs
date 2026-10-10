@@ -295,7 +295,7 @@ impl Pg {
     }
 
     // ponytail: no TLS, add postgres-native-tls when the server isn't local
-    fn run<T>(&self, f: impl Fn(&mut postgres::Client) -> Result<T, postgres::Error>) -> io::Result<T> {
+    pub fn run<T>(&self, f: impl Fn(&mut postgres::Client) -> Result<T, postgres::Error>) -> io::Result<T> {
         let mut c = self.client.lock().unwrap_or_else(|e| e.into_inner());
         if c.is_closed() {
             *c = postgres::Client::connect(&self.url, postgres::NoTls).map_err(io::Error::other)?;
@@ -336,7 +336,7 @@ pub fn open(cfg_path: &str) -> Result<(crate::config::Config, Db), String> {
     Ok((cfg, db))
 }
 
-const CONFIG: &str = "impulse.toml";
+pub const CONFIG: &str = "impulse.toml";
 const USERS: &str = "users.json";
 const SYSTEM: &str = "system.json";
 

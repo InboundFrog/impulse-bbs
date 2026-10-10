@@ -12,6 +12,7 @@ mod files;
 mod fse;
 mod import;
 mod menu;
+mod migrate;
 mod misc;
 mod msgs;
 mod multinode;
@@ -39,6 +40,16 @@ fn main() {
         };
         let cfg = args.get(3).map_or("impulse.toml", |s| s.as_str());
         match import::run(std::path::Path::new(dir), cfg) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("{e}");
+                process::exit(1);
+            }
+        }
+        return;
+    }
+    if args.get(1).is_some_and(|a| a == "migrate") {
+        match migrate::run(args.get(2).map_or("", |s| s.as_str()), args.get(3).map_or("impulse.toml", |s| s.as_str())) {
             Ok(s) => println!("{s}"),
             Err(e) => {
                 eprintln!("{e}");
