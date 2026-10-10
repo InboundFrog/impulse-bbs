@@ -490,7 +490,7 @@ impl Session {
         let Some(v) = std::fs::read(&p).ok().and_then(|b| crate::arcview::list(&b)) else {
             return self.sprint("|U1Can't view the inside of that kind of file.");
         };
-        // ponytail: one template set (ZIPVIEW.*, Z-codes) for every archive type; no CRC/attr (Z7/Z8)
+        // ponytail: one template set (ZIPVIEW.*, Z-codes) for every archive type
         self.vars.insert("ZN".into(), f.name.clone());
         if !self.printf("zipview.top")? {
             self.sprint("|NL|U4 Length  Method      Size  Ratio   Date     Time   Name|NL|U4------- -------- ------- ------ -------- ------ ------------")?;
@@ -508,6 +508,8 @@ impl Session {
                 ("Z4", format!("{pct:>4}%")),
                 ("Z5", d),
                 ("Z6", t),
+                ("Z7", format!("{:08X}", e.crc)),
+                ("Z8", e.attr.clone()),
                 ("Z9", format!("{:<13}", e.name)),
                 ("ZT", format!("{tu:>7}")),
                 ("ZC", format!("{tc:>7}")),

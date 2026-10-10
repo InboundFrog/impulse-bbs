@@ -8,6 +8,15 @@ pub struct Entry {
     pub csize: u32,
     /// MS-DOS packed date (high word) and time (low word)
     pub dos: u32,
+    pub crc: u32,
+    /// `shr*` flags as ZIPVIEWU's b2attr shows them
+    pub attr: String,
+}
+
+/// b2attr: s(ystem) h(idden) r(ead-only) for DOS attribute byte `a`, `*` if encrypted.
+fn attr(a: u8, encrypted: bool) -> String {
+    let f = |bit: u8, c: char, off: char| if a & bit != 0 { c } else { off };
+    [f(4, 's', '-'), f(2, 'h', '-'), f(1, 'r', 'w'), f(8, '?', '-'), if encrypted { '*' } else { ' ' }].iter().collect()
 }
 
 fn u16_at(b: &[u8], p: usize) -> Option<u32> {
@@ -49,6 +58,8 @@ fn zip(b: &[u8]) -> Option<Vec<Entry>> {
             size: u32_at(b, p + 24)?,
             csize: u32_at(b, p + 20)?,
             dos: u16_at(b, p + 14)? << 16 | u16_at(b, p + 12)?,
+            crc: u32_at(b, p + 16)?,
+            attr: attr(*b.get(p + 38)?, b[p + 8] & 1 != 0),
         });
         p += 46 + nl + u16_at(b, p + 30)? as usize + u16_at(b, p + 32)? as usize;
     }
@@ -60,7 +71,7 @@ fn lzh(b: &[u8]) -> Option<Vec<Entry>> {
     while b.get(p).is_some_and(|&h| h > 0) {
         let csize = u32_at(b, p + 7)?;
         let level = *b.get(p + 20)?;
-        let (name, dos, hs) = if level == 2 {
+        let (name, dos, hs, crc) = if level == 2 {
             // header size is a word; the name is extended header 1; time is Unix
             let (mut name, mut q, mut next) = (&b[0..0], p + 26, u16_at(b, p + 24)? as usize);
             while next > 2 {
@@ -69,10 +80,10 @@ fn lzh(b: &[u8]) -> Option<Vec<Entry>> {
                 }
                 (q, next) = (q + next, u16_at(b, q + next - 2)? as usize);
             }
-            (name, unix_dos(u32_at(b, p + 15)?), u16_at(b, p)? as usize)
+            (name, unix_dos(u32_at(b, p + 15)?), u16_at(b, p)? as usize, u16_at(b, p + 21)?)
         } else {
             let nl = *b.get(p + 21)? as usize;
-            (b.get(p + 22..p + 22 + nl)?, u32_at(b, p + 15)?, b[p] as usize + 2)
+            (b.get(p + 22..p + 22 + nl)?, u32_at(b, p + 15)?, b[p] as usize + 2, u16_at(b, p + 22 + nl).unwrap_or(0))
         };
         v.push(Entry {
             name: String::from_utf8_lossy(name).into(),
@@ -80,6 +91,8 @@ fn lzh(b: &[u8]) -> Option<Vec<Entry>> {
             size: u32_at(b, p + 11)?,
             csize,
             dos,
+            crc,
+            attr: attr(if level == 2 { 0 } else { b[p + 19] }, false),
         });
         p += hs + csize as usize;
     }
@@ -124,6 +137,8 @@ fn arj(b: &[u8]) -> Option<Vec<Entry>> {
             size: u32_at(h, 16)?,
             csize,
             dos: u32_at(h, 8)?,
+            crc: u32_at(h, 20)?,
+            attr: attr(*h.get(26)?, h[4] & 1 != 0),
         });
         p += csize as usize;
     }
@@ -147,6 +162,8 @@ mod tests {
         // 1994-03-05 14:30 in DOS form
         let dos: u32 = ((14 << 9 | 3 << 5 | 5) << 16) | (14 << 11 | 30 << 5);
         assert_eq!(dos_dt(dos), ("03/05/94".into(), "02:30p".into()));
+        assert_eq!(attr(1 | 4, true), "s-r-*");
+        assert_eq!(attr(0, false), "--w- ");
 
         // level 2: word header size, name in extended header 1
         let mut l2 = vec![0u8; 26];
