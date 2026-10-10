@@ -62,6 +62,12 @@ cosysop_max_waiting = 100
 max_chat_pages = 3       # OC pages per call, then GOAWAY and a letter instead
 max_quote_lines = 50
 min_post_space_kb = 100  # refuse to start a message with less free disk
+use_file_points = false
+ul_points = 1            # file points per upload,
+ul_points_kb = 0         #   or per this many K uploaded (at least 1)
+validate_uploads = false # uploads stay hidden until %7
+ul_credit_acs = "s255"   # credited at upload; others when their file is validated
+see_unval_acs = "s255"   # may list and download unvalidated files
 
 [[boards]]
 name = "General"

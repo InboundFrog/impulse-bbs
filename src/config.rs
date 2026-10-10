@@ -125,6 +125,14 @@ pub struct Config {
     /// Charge file points for downloads, and credit this many per upload.
     pub use_file_points: bool,
     pub ul_points: i32,
+    /// When set, `ul_points` are per this many K uploaded, at least 1
+    /// (fileptratio, fileptcompbasesize).
+    pub ul_points_kb: u64,
+    /// Uploaders matching this ACS are credited straight away; others when a
+    /// SysOp validates the file (ulvalreq).
+    pub ul_credit_acs: String,
+    /// May see and download files nobody has validated yet (seeunval).
+    pub see_unval_acs: String,
     /// Uploads stay hidden until a SysOp validates them (`%7`).
     pub validate_uploads: bool,
     /// Upload checks on .ZIP files (ULCHECK.PAS): a comment file put on with
@@ -436,6 +444,9 @@ impl Default for Config {
             no_ratio_acs: String::new(),
             use_file_points: false,
             ul_points: 1,
+            ul_points_kb: 0,
+            ul_credit_acs: "s255".into(),
+            see_unval_acs: "s255".into(),
             validate_uploads: false,
             ul_comment: String::new(),
             ul_add: String::new(),

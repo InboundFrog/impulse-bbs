@@ -173,7 +173,7 @@ impl Session {
     // ---- listing ------------------------------------------------------------
 
     fn can_see_file(&self, f: &FileRec) -> bool {
-        !f.unvalidated || self.is_sysop() || f.owner_num == self.unum
+        !f.unvalidated || self.acs(&self.cfg().see_unval_acs) || f.owner_num == self.unum
     }
 
     /// One listing entry (pfndd); returns the lines printed.
@@ -571,7 +571,7 @@ impl Session {
     /// Can this file be downloaded at all (okdl)?
     fn ok_dl(&mut self, (b, f): &(usize, FileRec)) -> io::Result<bool> {
         let fb = self.cfg().fbases[*b].clone();
-        let why = if f.unvalidated && !self.is_sysop() {
+        let why = if f.unvalidated && !self.acs(&self.cfg().see_unval_acs) {
             "That file has not been validated yet."
         } else if !file_path(&fb, &f.name).exists() {
             "That file is not available."
@@ -878,6 +878,7 @@ impl Session {
                 std::fs::remove_file(&path)?;
             }
             let cfg = self.cfg();
+            let unvalidated = !sound || (cfg.validate_uploads && !self.is_sysop());
             let f = FileRec {
                 name: name.clone(),
                 desc: if desc.is_empty() { "(No description)".into() } else { desc },
@@ -887,7 +888,7 @@ impl Session {
                 owner: self.user.name.clone(),
                 owner_num: self.unum,
                 date: today(),
-                unvalidated: !sound || (cfg.validate_uploads && !self.is_sysop()),
+                unvalidated,
                 ..FileRec::default()
             };
             {
@@ -900,10 +901,12 @@ impl Session {
                 z.uk += size / 1024;
                 db.save()?;
             }
-            self.user.uploads += 1;
-            self.user.uk += size / 1024;
-            if cfg.use_file_points {
-                self.user.file_points += cfg.ul_points;
+            if !unvalidated || self.acs(&cfg.ul_credit_acs) {
+                let mut u = self.user.clone();
+                self.credit_upload(&mut u, size, true);
+                self.user = u;
+            } else {
+                self.sprint("|U1You'll get upload credit once the SysOp validates it.")?;
             }
             self.log(&format!("Uploaded {name} to {}", fb.name));
             self.sprompt("|U1Thanks for uploading |U3")?;
@@ -977,6 +980,11 @@ impl Session {
         let v = self.sh.db().files(&fb.file)?;
         if let Some(new) = self.edit_vec(&format!("Files in {}", fb.name), &v, &[])? {
             self.sh.db().put_files(&fb.file, &new)?;
+            for f in &new {
+                if v.iter().any(|o| o.name == f.name && o.unvalidated != f.unvalidated) {
+                    self.validated(f, !f.unvalidated)?;
+                }
+            }
         }
         Ok(())
     }
@@ -1103,6 +1111,41 @@ impl Session {
         Ok(())
     }
 
+    /// Credit the uploader of a file just validated, or take it back when
+    /// unvalidated, unless they're credited at upload (creditfile).
+    fn validated(&mut self, f: &FileRec, credit: bool) -> io::Result<()> {
+        let n = f.owner_num;
+        let Some(mut u) = (if n == self.unum { Some(self.user.clone()) } else { self.sh.db().users.get(n.wrapping_sub(1)).cloned() }) else { return Ok(()) };
+        if self.acs_for(&u, n, &self.cfg().ul_credit_acs) {
+            return Ok(());
+        }
+        let pts = self.credit_upload(&mut u, f.size, credit);
+        let what = if credit { "Awarding" } else { "Taking away" };
+        self.sprint(&format!("|U5{what} upload credits: 1 file, {}k, {pts} file points.", f.size / 1024))?;
+        if n == self.unum {
+            self.user = u;
+            self.save_user();
+            Ok(())
+        } else {
+            self.store_user(n, u)
+        }
+    }
+
+    /// Add (or take back) one upload of `size` bytes; returns the file points.
+    fn credit_upload(&self, u: &mut crate::db::User, size: u64, credit: bool) -> i32 {
+        let pts = ul_pts(&self.cfg(), size);
+        if credit {
+            u.uploads += 1;
+            u.uk += size / 1024;
+            u.file_points += pts;
+        } else {
+            u.uploads = u.uploads.saturating_sub(1);
+            u.uk = u.uk.saturating_sub(size / 1024);
+            u.file_points -= pts;
+        }
+        pts
+    }
+
     /// `%7` (validatefiles)
     pub fn validate_files(&mut self) -> io::Result<()> {
         let c = self.cfg();
@@ -1124,6 +1167,7 @@ impl Session {
                     'Y' => {
                         v[i].unvalidated = false;
                         changed = true;
+                        self.validated(&f, true)?;
                     }
                     'D' => {
                         let _ = std::fs::remove_file(file_path(fb, &f.name));
@@ -1227,9 +1271,28 @@ fn gif_specs(b: &[u8]) -> Option<(u16, u16, u32)> {
     Some((u16::from_le_bytes([b[6], b[7]]), u16::from_le_bytes([b[8], b[9]]), 1 << ((b[10] & 7) + 1)))
 }
 
+/// File points for uploading `size` bytes (fileptcomp per fileptcompbasesize K, at least 1).
+fn ul_pts(c: &crate::config::Config, size: u64) -> i32 {
+    match (c.use_file_points, c.ul_points_kb) {
+        (false, _) => 0,
+        (true, 0) => c.ul_points,
+        (true, kb) => ((size as f64 / 1024.0 / kb as f64) * c.ul_points as f64).round().max(1.0) as i32,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::wild;
+    use super::{ul_pts, wild};
+
+    #[test]
+    fn upload_points() {
+        let mut c = crate::config::Config { use_file_points: true, ul_points: 2, ..Default::default() };
+        assert_eq!(ul_pts(&c, 5_000_000), 2);
+        c.ul_points_kb = 100;
+        assert_eq!((ul_pts(&c, 1024), ul_pts(&c, 250 * 1024)), (1, 5));
+        c.use_file_points = false;
+        assert_eq!(ul_pts(&c, 250 * 1024), 0);
+    }
 
     #[test]
     fn wildcards() {
