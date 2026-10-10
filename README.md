@@ -63,8 +63,8 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 - **Misc:** automessage `UR UW UA`, rumors `RR RA RL RD`, time bank `UD UL`,
   new-user voting `-N`, bulletins, BBS list `-V -A`, questionnaires `-Q -R`
 - **SysOp (`%x`):** user, board, file base, config, menu and conference
-  editors, become-user, logs, daily stats, mini-DOS (with `LADLE` SAUCE → FILE_ID.DIZ), read all mail, file
-  maintenance `%1-%9 %$ %%`
+  editors, become-user, logs, daily stats, mini-DOS (with `LADLE` SAUCE → FILE_ID.DIZ), read all mail, protocol
+  editor `%P`, file maintenance `%1-%9 %$ %%`
 
 ## Running a system
 
@@ -75,8 +75,13 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 - **Console:** the server reads commands on stdin: `W` who's online, `S`
   today's stats, `M node text` node message (0 = all), `K node` hang up,
   `V node` watch a node live (the local screen), `B node [n]` its
-  scrollback, `L [n]` log tail, `Q` shut down. The editors run in a
-  session, so log on over telnet for those.
+  scrollback, `C node` chat with a caller (`/Q` ends), `A` toggle SysOp
+  available (an `OC` page beeps here), `L [n]` log tail, `Q` shut down.
+  The WFC editors, mail and pack run in a session, so log on over telnet
+  (`telnet localhost 2323` is the local logon).
+- **Callers:** menu prompts from `[[prompts]]` (PROMPTS.DAT, picked at
+  logon or `OK` M), auto-signatures (`OK` G), per-SL download ratios
+  `[[sl_ratios]]` with `no_ratio_acs` exempt.
 - **Importing a 7.1 system:** `impulse import <dir with USER.LST etc.> [config]`
   into a fresh `data_path`. Users (numbers, stats, flags, colours), message
   and file bases and `*.DIR` file lists come across; the config is backed up
@@ -97,9 +102,8 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 
 ## Not carried over
 
-`MAKEWFC` (the DOS WFC screen image) and typing into a caller's session
-from the console: log on over telnet, or use `OC` chat, instead. LHA
-level-2 headers aren't listed by `FV`.
+`MAKEWFC`: it builds `WFC.BIN`, which no 7.1 code reads. ISL `SETTIME`
+and `SETDATE` are ignored: a script shouldn't set the host clock.
 
 ## Layout
 
