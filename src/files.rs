@@ -562,7 +562,7 @@ impl Session {
         if self.is_sysop() || u.ac.contains('1') || (!c.no_ratio_acs.is_empty() && self.acs(&c.no_ratio_acs)) {
             return true;
         }
-        let (fr, kr) = c.sl_ratios.iter().filter(|r| r.min_sl <= u.sl).max_by_key(|r| r.min_sl).map_or((c.dl_ratio, c.dlk_ratio), |r| (r.files, r.kb));
+        let (fr, kr) = c.sl_limit(u.sl).map_or((c.dl_ratio, c.dlk_ratio), |r| (r.files, r.kb));
         let files = fr == 0 || u.downloads + n <= (u.uploads + 1) * fr;
         let kb = kr == 0 || u.dk + k <= (u.uk + 1) * kr as u64;
         files && kb

@@ -31,6 +31,19 @@ pub struct Config {
     pub new_dsl: u8,
     pub new_ar: String,
     pub max_logon_tries: u32,
+    /// Let users at or below `new_sl` log on; 7.1 hangs up on them until a
+    /// SysOp (or auto-validation / NUV) raises them.
+    pub unvalidated_logon: bool,
+    /// After the password, ask for the last 4 digits of the phone number (phonepw).
+    pub phone_pw: bool,
+    /// Users matching this ACS must also give `sysop_password` at logon (spw).
+    pub logon_pw_acs: String,
+    /// Serial callers below this rate are slow (lock300/b300 times; 0 = off):
+    /// `slow_lockout` refuses them, `slow_hours` ("HH:MM-HH:MM") limits when
+    /// they may call. Display files NO9600, NO9600H, YES9600H.
+    pub slow_baud: u32,
+    pub slow_lockout: bool,
+    pub slow_hours: String,
     pub idle_timeout_minutes: u64,
     pub minutes_per_day: i64,
     /// Users matching this ACS are SysOps: no time limit, sysop-only commands.
@@ -81,9 +94,10 @@ pub struct Config {
     /// Files and K a user may download per file / K uploaded (0 = no ratio).
     pub dl_ratio: u32,
     pub dlk_ratio: u32,
-    /// Per-SL overrides of the two ratios (dlratio/dlkratio[sl]): the entry
+    /// Per-SL limits (callallow/timeallow/dlratio/dlkratio[sl]): the entry
     /// with the highest `min_sl` at or below the user's SL applies.
-    pub sl_ratios: Vec<SlRatio>,
+    #[serde(alias = "sl_ratios")]
+    pub sl_limits: Vec<SlLimit>,
     /// Users matching this ACS skip ratios (nodlratio).
     pub no_ratio_acs: String,
     /// Charge file points for downloads, and credit this many per upload.
@@ -158,10 +172,30 @@ pub struct Event {
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(default)]
-pub struct SlRatio {
+pub struct SlLimit {
     pub min_sl: u8,
+    /// Download ratios; 0 = none.
     pub files: u32,
     pub kb: u32,
+    /// Calls a day; 0 = no limit.
+    pub calls: u32,
+    /// Minutes a day; 0 = `minutes_per_day`.
+    pub minutes: i64,
+}
+
+impl Config {
+    /// The `sl_limits` entry for `sl`, if any applies.
+    pub fn sl_limit(&self, sl: u8) -> Option<&SlLimit> {
+        self.sl_limits.iter().filter(|r| r.min_sl <= sl).max_by_key(|r| r.min_sl)
+    }
+
+    /// Minutes a day for `sl` (timeallow).
+    pub fn minutes_for(&self, sl: u8) -> i64 {
+        match self.sl_limit(sl) {
+            Some(l) if l.minutes > 0 => l.minutes,
+            _ => self.minutes_per_day,
+        }
+    }
 }
 
 /// A serial port callers may use: a direct-connect terminal, or a dial-in
@@ -257,6 +291,8 @@ pub struct Strings {
     pub name_not_found: String,
     pub logon_new: String,
     pub wrong_password: String,
+    pub phone_num: String,
+    pub wrong_phone: String,
     pub new_user_pw: String,
     pub pause: String,
     pub aborted: String,
@@ -305,6 +341,12 @@ impl Default for Config {
             new_dsl: 20,
             new_ar: String::new(),
             max_logon_tries: 4,
+            unvalidated_logon: false,
+            phone_pw: false,
+            logon_pw_acs: "s255".into(),
+            slow_baud: 0,
+            slow_lockout: false,
+            slow_hours: String::new(),
             idle_timeout_minutes: 10,
             minutes_per_day: 60,
             sysop_acs: "s255".into(),
@@ -354,7 +396,7 @@ impl Default for Config {
             qwk_max: 500,
             dl_ratio: 0,
             dlk_ratio: 0,
-            sl_ratios: Vec::new(),
+            sl_limits: Vec::new(),
             no_ratio_acs: String::new(),
             use_file_points: false,
             ul_points: 1,
@@ -377,6 +419,8 @@ impl Default for Strings {
             name_not_found: "|NL|12Name not found in user list.".into(),
             logon_new: "|U1Log on as a new user? ".into(),
             wrong_password: "|12Wrong password.".into(),
+            phone_num: "|U1Last 4 digits of your phone number: |U3".into(),
+            wrong_phone: "|12Wrong phone number.".into(),
             new_user_pw: "|U1New user password: |U3".into(),
             pause: "|U2[|U3pause|U2]".into(),
             aborted: "|12Aborted.".into(),
@@ -432,7 +476,7 @@ pub fn templates() -> Vec<(String, serde_json::Value)> {
         tmpl::<Conf>("file_confs"),
         tmpl::<Event>("events"),
         tmpl::<Prompt>("prompts"),
-        tmpl::<SlRatio>("sl_ratios"),
+        tmpl::<SlLimit>("sl_limits"),
         tmpl::<SerialPort>("serial"),
     ]
 }

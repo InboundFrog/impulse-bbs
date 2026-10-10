@@ -46,6 +46,8 @@ pub struct User {
     pub last_on: String,
     pub logons: u32,
     pub on_today: u32,
+    /// Wrong passwords since the last good call (illegal).
+    pub illegal: u32,
     pub minutes_today: i64,
     pub total_minutes: i64,
     pub posts: u32,
@@ -109,6 +111,7 @@ impl Default for User {
             last_on: String::new(),
             logons: 0,
             on_today: 0,
+            illegal: 0,
             minutes_today: 0,
             total_minutes: 0,
             posts: 0,

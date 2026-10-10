@@ -731,12 +731,28 @@ impl Session {
             let pw = self.input_pw(20)?;
             let u = sh.db().users[n - 1].clone();
             if db::check_login(&u.pw_hash, &pw) {
+                if cfg.phone_pw {
+                    self.sprompt(&st.phone_num)?;
+                    let digits: String = u.phone.chars().filter(char::is_ascii_digit).collect();
+                    if self.input(4)? != digits[digits.len().saturating_sub(4)..] {
+                        self.sprint(&st.wrong_phone)?;
+                        tries += 1;
+                        continue;
+                    }
+                }
                 self.user = u;
                 self.unum = n;
+                if !cfg.logon_pw_acs.is_empty() && self.acs(&cfg.logon_pw_acs) && !self.check_sysop_pw()? {
+                    (self.user, self.unum) = (User::default(), 0);
+                    tries += 1;
+                    continue;
+                }
                 break;
             }
             self.sprint(&st.wrong_password)?;
-            self.log(&format!("Wrong password for {}", u.name));
+            sh.db().users[n - 1].illegal += 1;
+            let _ = sh.db().save();
+            self.log(&format!("Illegal logon attempt! Tried: {} #{n}", u.name));
             tries += 1;
         }
         if self.user.locked_out {
@@ -933,15 +949,23 @@ impl Session {
 
     fn logon(&mut self) -> io::Result<()> {
         let today = today();
+        let cfg = self.cfg();
+        if !self.is_sysop() {
+            self.slow_checks()?;
+        }
+        if !cfg.unvalidated_logon && !self.is_sysop() && self.user.sl <= cfg.new_sl {
+            if !self.printf("nonval")? {
+                self.sprint("|NL|U1Your account hasn't been validated yet. Please call back later.")?;
+            }
+            self.log("Not validated yet; hung up");
+            return Err(hangup());
+        }
         if self.user.last_on != today {
             self.user.on_today = 0;
-            self.user.minutes_today = self.cfg().minutes_per_day;
+            self.user.minutes_today = cfg.minutes_for(self.user.sl);
         }
-        if self.user.minutes_today <= 0 && !self.is_sysop() {
-            if !self.printf("notlefta")? {
-                self.sprint("|12You have no time left today.")?;
-            }
-            return Err(hangup());
+        if !self.is_sysop() {
+            self.call_limits(&today)?;
         }
         self.event_checks()?;
         self.user.on_today += 1;
@@ -1010,9 +1034,74 @@ impl Session {
         Ok(())
     }
 
+    /// callallow / rlogon / timeallow at logon, with the time bank offered
+    /// when the day's minutes are gone (LOGON1.PAS).
+    fn call_limits(&mut self, today: &str) -> io::Result<()> {
+        let cfg = self.cfg();
+        let calls = cfg.sl_limit(self.user.sl).map_or(0, |l| l.calls);
+        let calls = if self.user.ac.contains('L') { 1 } else { calls };
+        let again = self.user.last_on == today;
+        let mut too_much = false;
+        if calls > 0 && again && self.user.on_today >= calls {
+            if !self.printf("2manycal")? {
+                let n = if calls == 1 { "once".to_string() } else { format!("{calls} times") };
+                self.sprint(&format!("|12You can only log on {n} per day."))?;
+            }
+            too_much = true;
+        } else if self.user.minutes_today <= 0 && again {
+            if !self.printf("notlefta")? {
+                self.sprint(&format!("|12You can only log on for {} minutes per day.", cfg.minutes_for(self.user.sl)))?;
+            }
+            too_much = true;
+            if self.user.time_bank > 0 {
+                self.sprint(&format!("|U1However, you have |U3{}|U1 minutes left in your Time Bank.", self.user.time_bank))?;
+                if self.pynq("|U1Withdraw from Time Bank? ", true)? {
+                    self.time_bank_withdraw("")?;
+                }
+                too_much = self.user.minutes_today <= 0;
+            }
+        }
+        if too_much {
+            self.log("Tried logging on more than allowed");
+            return Err(hangup());
+        }
+        Ok(())
+    }
+
+    /// lock300 / b300lowtime-b300hitime, for callers slower than `slow_baud`.
+    fn slow_checks(&mut self) -> io::Result<()> {
+        let cfg = self.cfg();
+        if self.t.baud == 0 || self.t.baud >= cfg.slow_baud {
+            return Ok(());
+        }
+        let msg = format!("Callers under {} baud", cfg.slow_baud);
+        if cfg.slow_lockout {
+            if !self.printf("no9600")? {
+                self.sprint(&format!("|12{msg} are not allowed on this BBS."))?;
+            }
+            return Err(hangup());
+        }
+        let window = cfg.slow_hours.split_once('-').and_then(|(a, b)| Some((crate::events::hhmm(a)?, crate::events::hhmm(b)?)));
+        if let Some((lo, hi)) = window {
+            let now = (Local::now().hour() * 60 + Local::now().minute()) as i64;
+            let inside = if lo <= hi { (lo..hi).contains(&now) } else { now >= lo || now < hi };
+            if !inside {
+                if !self.printf("no9600h")? {
+                    self.sprint(&format!("|12{msg} may only call from {}.", cfg.slow_hours))?;
+                }
+                return Err(hangup());
+            }
+            if !self.printf("yes9600h")? {
+                self.sprint(&format!("|U1NOTE: {msg} may only call from {}.", cfg.slow_hours))?;
+            }
+        }
+        Ok(())
+    }
+
     fn logoff(&mut self) {
         let _ = self.t.flush();
         if self.unum > 0 {
+            self.user.illegal = 0;
             let used = (self.on_since.elapsed().as_secs() / 60) as i64;
             self.user.minutes_today = (self.user.minutes_today - used).max(0);
             self.user.total_minutes += used;

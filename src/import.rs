@@ -141,7 +141,7 @@ fn user(b: &[u8], boards: &[Board], fbases: &[FBase]) -> (User, Vec<u16>) {
     r.skip(2); // waiting, linelen
     u.page_len = r.u8().max(5) as u16;
     u.on_today = r.u8() as u32;
-    r.skip(1);
+    u.illegal = r.u8() as u32;
     u.sl = r.u8();
     u.dsl = r.u8();
     r.skip(10); // mono colours

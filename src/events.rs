@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Minutes past midnight for "HH:MM".
-fn hhmm(s: &str) -> Option<i64> {
+pub fn hhmm(s: &str) -> Option<i64> {
     let (h, m) = s.trim().split_once(':')?;
     Some(h.parse::<i64>().ok()? * 60 + m.parse::<i64>().ok()?)
 }

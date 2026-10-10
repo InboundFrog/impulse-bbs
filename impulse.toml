@@ -31,6 +31,19 @@ new_dsl = 20
 new_ar = ""
 new_user_order = ["real_name", "city", "phone", "birthday", "sex", "ansi"]  # NUORDER; drop any to skip it
 max_logon_tries = 4
+unvalidated_logon = false  # false (as 7.1): users at or below new_sl are hung up until validated
+phone_pw = false         # also ask the last 4 digits of the phone number
+logon_pw_acs = "s255"    # these users also give sysop_password at logon (if set)
+slow_baud = 0            # serial callers under this rate are "slow" (0 = off):
+slow_lockout = false     #   refuse them (NO9600)
+slow_hours = ""          #   or only allow them "HH:MM-HH:MM" (NO9600H / YES9600H)
+# Per-SL limits; the entry with the highest min_sl <= the user's SL applies.
+# [[sl_limits]]
+# min_sl = 20
+# calls = 2              # calls a day (0 = no limit; AC flag L = once a day)
+# minutes = 45           # minutes a day (0 = minutes_per_day)
+# files = 5              # download ratio, files per upload (0 = none)
+# kb = 100               # download ratio, K per K uploaded (0 = none)
 idle_timeout_minutes = 10
 minutes_per_day = 60
 sysop_acs = "s255"       # the first user created gets SL 255
