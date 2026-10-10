@@ -4,4 +4,18 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    ignore:
+
+  # Workflows pin actions to commit SHAs; this keeps them current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # compose.yaml's postgres image.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
