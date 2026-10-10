@@ -187,7 +187,20 @@ fn board(b: &[u8]) -> Board {
     r.skip(4 + 8);
     let conf = r.u8() as usize;
     debug_assert_eq!(r.p + 2, BOARD_LEN);
-    Board { name, file, acs, post_acs, mci_acs, max_msgs, anonymous, password, real_names: has(&stat, 1, 0), filter: has(&stat, 4, 0), conf }
+    Board {
+        name,
+        file,
+        acs,
+        post_acs,
+        mci_acs,
+        max_msgs,
+        anonymous,
+        password,
+        real_names: has(&stat, 1, 0),
+        filter: has(&stat, 4, 0),
+        unhidden: has(&stat, 0, 0),
+        conf,
+    }
 }
 
 /// The base plus its .DIR file name and whether that lives in the dl path.
@@ -205,7 +218,20 @@ fn fbase(b: &[u8]) -> (FBase, String, bool) {
     let conf = r.u8() as usize;
     debug_assert_eq!(r.p + 5, UBOARD_LEN);
     let file = dir.split('.').next().unwrap_or(&dir).to_lowercase();
-    let f = FBase { name, file, dl_path: dos_path(&dl), ul_path: dos_path(&ul), acs, ul_acs, name_acs, password, max_files, no_ratio: stat & 1 != 0, conf };
+    let f = FBase {
+        name,
+        file,
+        dl_path: dos_path(&dl),
+        ul_path: dos_path(&ul),
+        acs,
+        ul_acs,
+        name_acs,
+        password,
+        max_files,
+        no_ratio: stat & 1 != 0,
+        unhidden: stat & 2 != 0,
+        conf,
+    };
     let dir = if dir.contains('.') { dir } else { format!("{dir}.DIR") };
     (f, dir, stat & 4 != 0)
 }

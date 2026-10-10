@@ -169,6 +169,8 @@ pub struct FBase {
     pub max_files: usize,
     /// Downloads here don't count against ratios or points.
     pub no_ratio: bool,
+    /// Listed (unnumbered) to users without access (fbunhidden).
+    pub unhidden: bool,
     pub conf: usize,
 }
 
@@ -304,6 +306,8 @@ pub struct Board {
     pub real_names: bool,
     /// Public posts lose colour codes; control and 8-bit characters become `*` (mbfilter).
     pub filter: bool,
+    /// Listed (unnumbered) to users without access (mbunhidden).
+    pub unhidden: bool,
     /// Conference number; 0 shows the base in every conference.
     pub conf: usize,
 }

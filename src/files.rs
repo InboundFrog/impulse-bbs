@@ -74,11 +74,15 @@ impl Session {
     fn list_fbases(&mut self) -> io::Result<Vec<usize>> {
         let list = self.fbases();
         self.tmpl("filebase.top", &[], "|NL|U3File bases")?;
-        for (i, &b) in list.iter().enumerate() {
-            let fb = self.cfg().fbases[b].clone();
+        let (c, conf) = (self.cfg(), self.fconf);
+        for (b, fb) in c.fbases.iter().enumerate().filter(|(_, x)| conf == 0 || x.conf == 0 || x.conf == conf) {
+            let (num, n) = match list.iter().position(|&x| x == b) {
+                Some(i) => ((i + 1).to_string(), self.sh.db().files(&fb.file)?.len().to_string()),
+                None if fb.unhidden => ("-".into(), "?".into()),
+                None => continue,
+            };
             let scan = if self.user.no_fscan.contains(&fb.file) { " " } else { "*" };
-            let n = self.sh.db().files(&fb.file)?.len();
-            let vars = [("FE", fb.name.clone()), ("FI", (i + 1).to_string()), ("FN", n.to_string()), ("FZ", scan.into())];
+            let vars = [("FE", fb.name.clone()), ("FI", num), ("FN", n), ("FZ", scan.into())];
             self.tmpl("filebase.mid", &vars, "|U2%FI. |U3%FZ|U1%FE |U2(%FN files)")?;
         }
         self.tmpl("filebase.bot", &[], "")?;

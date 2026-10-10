@@ -162,9 +162,15 @@ impl Session {
     fn list_boards(&mut self) -> io::Result<Vec<usize>> {
         let list = self.boards();
         self.tmpl("msgbase.top", &[], "|NL|U3Message bases")?;
-        for (i, &b) in list.iter().enumerate() {
-            let scan = if self.user.no_scan.contains(&self.cfg().boards[b].file) { " " } else { "*" };
-            let vars = [("ME", self.cfg().boards[b].name.clone()), ("MI", (i + 1).to_string()), ("MT", "Local".into()), ("MZ", scan.into())];
+        let (c, conf) = (self.cfg(), self.mconf);
+        for (b, board) in c.boards.iter().enumerate().filter(|(_, x)| conf == 0 || x.conf == 0 || x.conf == conf) {
+            let num = match list.iter().position(|&x| x == b) {
+                Some(i) => (i + 1).to_string(),
+                None if board.unhidden => "-".into(),
+                None => continue,
+            };
+            let scan = if self.user.no_scan.contains(&board.file) { " " } else { "*" };
+            let vars = [("ME", board.name.clone()), ("MI", num), ("MT", "Local".into()), ("MZ", scan.into())];
             self.tmpl("msgbase.mid", &vars, "|U2%MI. |U3%MZ|U1%ME")?;
         }
         self.tmpl("msgbase.bot", &[], "")?;
