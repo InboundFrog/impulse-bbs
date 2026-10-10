@@ -20,6 +20,8 @@ pub struct Shared {
     pub cfg_path: String,
     // ponytail: one global lock for all data, per-file locks if node counts ever get large
     pub db: Mutex<Db>,
+    /// Chat forum the console has joined (`C node`), 0 = none.
+    pub console_forum: std::sync::atomic::AtomicU8,
 }
 
 impl Shared {
@@ -1115,6 +1117,9 @@ impl Session {
                 }
                 None => self.sprompt(&p)?,
             }
+        }
+        if self.wait_key_or_chat()? {
+            return Ok(String::new());
         }
         let cmd = self.getcmd()?;
         self.ran_cmd = !cmd.is_empty();

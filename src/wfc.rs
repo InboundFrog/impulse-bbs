@@ -5,11 +5,13 @@
 use crate::session::Shared;
 use std::io::BufRead;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 const HELP: &str = "  W           who's online
   S           today's statistics
   M node text send a node message (node 0 = everyone)
   K node      hang up a node
+  C node      chat with a node (/Q ends)
   V [node]    watch a node live (V alone stops)
   B node [n]  a node's last n lines of scrollback (default 24)
   L [n]       last n lines of the SysOp log (default 20)
@@ -19,6 +21,9 @@ pub fn spawn(sh: Arc<Shared>) {
     std::thread::spawn(move || {
         for line in std::io::stdin().lock().lines() {
             let Ok(line) = line else { break };
+            if chat(&sh, &line) {
+                continue;
+            }
             match run(&sh, line.trim()) {
                 Some(out) => println!("{out}"),
                 None => {
@@ -35,6 +40,31 @@ pub fn spawn(sh: Arc<Shared>) {
             }
         }
     });
+}
+
+/// A line typed while chatting with a node; false if not chatting.
+fn chat(sh: &Shared, line: &str) -> bool {
+    let forum = sh.console_forum.load(Ordering::Relaxed);
+    if forum == 0 {
+        return false;
+    }
+    let node = usize::from(forum - 10);
+    let name = sh.cfg().sysop_name.clone();
+    let mut db = sh.db();
+    let Some(o) = db.online.get_mut(&node) else {
+        sh.console_forum.store(0, Ordering::Relaxed);
+        println!("Node {node} has gone; chat over.");
+        return true;
+    };
+    if line.trim().eq_ignore_ascii_case("/Q") {
+        sh.console_forum.store(0, Ordering::Relaxed);
+        (o.forum, o.pull) = (0, 0);
+        o.inbox.push(format!("|U4* |U3{name}|U1 has left the chat."));
+        println!("Chat over.");
+    } else if !line.trim().is_empty() {
+        o.inbox.push(format!("|U3{name}|U1: {line}"));
+    }
+    true
 }
 
 /// One console command; None means shut down.
@@ -68,6 +98,18 @@ pub fn run(sh: &Shared, line: &str) -> Option<String> {
             Some(s) => {
                 let _ = s.shutdown(std::net::Shutdown::Both);
                 format!("Node {node} hung up.")
+            }
+            None => format!("Node {node} isn't online."),
+        },
+        "C" => match db.online.get_mut(&node) {
+            Some(o) => {
+                // OC pages use forum 10 + node, so a waiting page is answered here too
+                let forum = 10 + node as u8;
+                if o.forum != forum {
+                    o.pull = forum;
+                }
+                sh.console_forum.store(forum, Ordering::Relaxed);
+                format!("Chatting with node {node} ({}); /Q ends.", o.name)
             }
             None => format!("Node {node} isn't online."),
         },

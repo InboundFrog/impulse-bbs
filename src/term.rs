@@ -103,9 +103,10 @@ impl Term {
         if !self.stuffed.is_empty() {
             return Ok(true);
         }
-        self.s.set_read_timeout(Some(wait))?;
+        // a hung-up socket refuses timeouts (EINVAL on macOS); peek then reports EOF
+        let _ = self.s.set_read_timeout(Some(wait));
         let r = self.s.peek(&mut [0]);
-        self.s.set_read_timeout(Some(self.idle))?;
+        let _ = self.s.set_read_timeout(Some(self.idle));
         match r {
             Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
             Ok(_) => Ok(true),

@@ -2,7 +2,8 @@
 
 use crate::session::Session;
 use std::io;
-use std::time::Duration;
+use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 
 impl Session {
     /// Queue `msg` for `node` (sendnodemessage); false if nobody's there.
@@ -46,8 +47,31 @@ impl Session {
         if self.send_node(n, from) { self.sprint("|U1Message sent.") } else { self.sprint("|12Nobody is on that node.") }
     }
 
+    /// Wait for a key at a menu prompt; if the SysOp starts a chat from the
+    /// console meanwhile, join it and return true.
+    pub fn wait_key_or_chat(&mut self) -> io::Result<bool> {
+        let idle = Duration::from_secs(self.cfg().idle_timeout_minutes.max(1) * 60);
+        let start = Instant::now();
+        while !self.t.key_ready(Duration::from_millis(250))? {
+            let pull = self.sh.db().online.get_mut(&self.node).map_or(0, |o| std::mem::take(&mut o.pull));
+            if pull != 0 {
+                self.nl()?;
+                self.sprint("|NL|U5The SysOp has broken in for a chat.")?;
+                self.chat_forum(pull)?;
+                return Ok(true);
+            }
+            if start.elapsed() > idle {
+                return Err(io::ErrorKind::TimedOut.into());
+            }
+        }
+        Ok(false)
+    }
+
     /// Send `msg` to everyone else in `forum`.
     fn forum_say(&self, forum: u8, msg: &str) {
+        if self.sh.console_forum.load(Ordering::Relaxed) == forum {
+            println!("{}", crate::session::strip_pipes(msg));
+        }
         let mut db = self.sh.db();
         for (n, o) in db.online.iter_mut() {
             if *n != self.node && o.forum == forum {
@@ -102,6 +126,11 @@ impl Session {
         loop {
             // ponytail: polls every 200ms; a per-node channel would wake instantly
             if !self.t.key_ready(Duration::from_millis(200))? {
+                // the console ended its chat
+                if self.sh.db().online.get(&self.node).is_some_and(|o| o.forum != forum) {
+                    self.nl()?;
+                    return Ok(());
+                }
                 let msgs = self.take_inbox();
                 if !msgs.is_empty() {
                     self.out(&format!("\r{}\r", " ".repeat(line.len() + 2)))?;
