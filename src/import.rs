@@ -151,9 +151,13 @@ fn user(b: &[u8], boards: &[Board], fbases: &[FBase]) -> (User, Vec<u16>) {
     u.last_fbase = r.u8() as usize;
     r.skip(4 + 2);
     u.time_bank = r.i16() as i64;
-    r.skip(5 + 2 + 2 + 4 + 2);
-    r.s(8);
-    r.skip(1 + 4);
+    r.skip(5); // boardsysop
+    (u.trap_activity, u.trap_separate) = (r.u8() != 0, r.u8() != 0);
+    r.skip(2 + 4);
+    (u.chat_auto, u.chat_separate) = (r.u8() != 0, r.u8() != 0);
+    r.s(8); // userstartmenu: nothing in 7.1 reads it
+    u.slog_separate = r.u8() != 0;
+    r.skip(4);
     debug_assert_eq!(r.p, USER_LEN);
     (u, ptrs)
 }

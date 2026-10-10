@@ -42,6 +42,8 @@ pub struct Term {
     /// Output since the last flush, before telnet escaping, for `tap`.
     raw: Vec<u8>,
     pub tap: std::sync::Arc<std::sync::Mutex<Tap>>,
+    /// User audit file (inittrapfile): the caller's keys are appended.
+    pub trap: Option<std::fs::File>,
 }
 
 impl Term {
@@ -50,7 +52,7 @@ impl Term {
             s.set_nodelay(true)?;
         }
         let (telnet, baud) = (s.telnet(), s.baud());
-        let mut t = Term { s, telnet, baud, buf: Vec::new(), last: 0, skip_lf: false, stuffed: Default::default(), curco: 7, idle, raw: Vec::new(), tap: Default::default() };
+        let mut t = Term { s, telnet, baud, buf: Vec::new(), last: 0, skip_lf: false, stuffed: Default::default(), curco: 7, idle, raw: Vec::new(), tap: Default::default(), trap: None };
         if telnet {
             // WILL ECHO + WILL SUPPRESS-GO-AHEAD: character mode, we do the echoing.
             t.buf.extend_from_slice(&[IAC, 251, 1, IAC, 251, 3]);
@@ -140,10 +142,26 @@ impl Term {
                 b'\n' | 0 if skip => {}
                 b'\r' | b'\n' => {
                     self.skip_lf = b == b'\r';
+                    self.trapped(b"\n");
                     return Ok('\r');
                 }
-                _ => return Ok(b as char),
+                8 | 127 => {
+                    self.trapped(b"\x08 \x08");
+                    return Ok(b as char);
+                }
+                _ => {
+                    self.trapped(&[b]);
+                    return Ok(b as char);
+                }
             }
+        }
+    }
+}
+
+impl Term {
+    fn trapped(&mut self, b: &[u8]) {
+        if let Some(f) = &mut self.trap {
+            let _ = f.write_all(b);
         }
     }
 }

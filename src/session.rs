@@ -8,7 +8,7 @@ use crate::term::{self, Term};
 use crate::{acs, events};
 use chrono::{Datelike, Local, NaiveDate, Timelike};
 use std::collections::HashMap;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::time::{Duration, Instant};
@@ -217,7 +217,21 @@ impl Session {
 
     pub fn log(&self, s: &str) {
         let who = if self.unum > 0 { format!(" {}", self.user.name) } else { String::new() };
-        self.sh.db().log(&format!("[{}] node {}{who}: {s}", now(), self.node));
+        let line = format!("[{}] node {}{who}: {s}", now(), self.node);
+        if self.unum > 0
+            && self.user.slog_separate
+            && let Some(mut f) = self.trap_file(&format!("slog{}.{}", self.unum, self.node))
+        {
+            let _ = writeln!(f, "{line}");
+        }
+        self.sh.db().log(&line);
+    }
+
+    /// Append to `<data>/trap/<name>` (TRAPPATH).
+    pub fn trap_file(&self, name: &str) -> Option<std::fs::File> {
+        let dir = self.sh.db().path("trap");
+        std::fs::create_dir_all(&dir).ok()?;
+        std::fs::OpenOptions::new().create(true).append(true).open(dir.join(name)).ok()
     }
 
     pub fn save_user(&self) {
@@ -948,6 +962,13 @@ impl Session {
         }
         self.save_user();
         self.log("Logon");
+        if self.cfg().global_trap || self.user.trap_activity {
+            let name = if self.user.trap_separate { format!("trap{}.msg", self.unum) } else { "trap.msg".into() };
+            self.t.trap = self.trap_file(&name);
+            if let Some(f) = &mut self.t.trap {
+                let _ = writeln!(f, "\n***** User Audit - {} on at {} *****", self.user.name, now());
+            }
+        }
         if self.printf("logon")? {
             self.pause()?;
         }

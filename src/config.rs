@@ -35,6 +35,10 @@ pub struct Config {
     pub minutes_per_day: i64,
     /// Users matching this ACS are SysOps: no time limit, sysop-only commands.
     pub sysop_acs: String,
+    /// Trap every caller's keystrokes (globaltrap).
+    pub global_trap: bool,
+    /// Record every SysOp chat (autochatopen).
+    pub auto_chat_capture: bool,
     /// Asked before every `%` SysOp command when set (checkpw).
     pub sysop_password: String,
     pub max_message_lines: usize,
@@ -304,6 +308,8 @@ impl Default for Config {
             idle_timeout_minutes: 10,
             minutes_per_day: 60,
             sysop_acs: "s255".into(),
+            global_trap: false,
+            auto_chat_capture: false,
             sysop_password: String::new(),
             max_message_lines: 100,
             max_time_bank: 60,

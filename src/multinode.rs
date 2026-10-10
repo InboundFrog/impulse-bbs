@@ -1,7 +1,7 @@
 //! Node messages and multinode chat forums (MULTINOD.PAS), kept in memory.
 
 use crate::session::Session;
-use std::io;
+use std::io::{self, Write};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
@@ -111,7 +111,16 @@ impl Session {
         self.set_doing(&format!("Chat forum #{forum}"));
         let name = self.user.name.clone();
         self.forum_say(forum, &format!("|U4* |U3{name}|U1 has joined the forum."));
-        let r = self.chat_loop(forum, &name);
+        // chatfile: SysOp chats (forums past 10) are recorded when asked
+        let file = if self.user.chat_separate { format!("chat{}.msg", self.unum) } else { "chat.msg".into() };
+        let mut cap = (forum > 10 && (self.cfg().auto_chat_capture || self.user.chat_auto)).then(|| self.trap_file(&file)).flatten();
+        if let Some(f) = &mut cap {
+            let _ = writeln!(f, "\n\n{}\nRecorded with user: {name}\n------------------------------------", crate::session::now());
+        }
+        let r = self.chat_loop(forum, &name, &mut cap);
+        if cap.is_some() {
+            self.log(&format!("Chat recorded in {file}"));
+        }
         if let Some(o) = self.sh.db().online.get_mut(&self.node) {
             o.forum = 0;
         }
@@ -119,7 +128,7 @@ impl Session {
         r
     }
 
-    fn chat_loop(&mut self, forum: u8, name: &str) -> io::Result<()> {
+    fn chat_loop(&mut self, forum: u8, name: &str, cap: &mut Option<std::fs::File>) -> io::Result<()> {
         let mut line = String::new();
         let prompt = "|U2> |U3";
         self.sprompt(prompt)?;
@@ -135,6 +144,9 @@ impl Session {
                 if !msgs.is_empty() {
                     self.out(&format!("\r{}\r", " ".repeat(line.len() + 2)))?;
                     for m in msgs {
+                        if let Some(f) = cap {
+                            let _ = writeln!(f, "{}", crate::session::strip_pipes(&m));
+                        }
                         self.sprint(&m)?;
                     }
                     self.sprompt(prompt)?;
@@ -151,7 +163,12 @@ impl Session {
                         "/W" => self.whos_online()?,
                         "/S" => self.node_message()?,
                         "" => {}
-                        _ => self.forum_say(forum, &format!("|U3{name}|U1: {}", crate::session::strip_pipes(&said))),
+                        _ => {
+                            if let Some(f) = cap {
+                                let _ = writeln!(f, "{name}: {said}");
+                            }
+                            self.forum_say(forum, &format!("|U3{name}|U1: {}", crate::session::strip_pipes(&said)))
+                        }
                     }
                     self.sprompt(prompt)?;
                 }

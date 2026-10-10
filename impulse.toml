@@ -34,6 +34,8 @@ max_logon_tries = 4
 idle_timeout_minutes = 10
 minutes_per_day = 60
 sysop_acs = "s255"       # the first user created gets SL 255
+global_trap = false      # record every caller's keystrokes to data/trap/trap.msg
+auto_chat_capture = false  # record every SysOp chat to data/trap/chat.msg
 max_message_lines = 100
 
 [[boards]]

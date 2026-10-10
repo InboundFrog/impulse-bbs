@@ -98,6 +98,12 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
   into a fresh `data_path`. Users (numbers, stats, flags, colours), message
   and file bases and `*.DIR` file lists come across; the config is backed up
   to `<config>.bak`. Check the file paths afterwards: they came from DOS.
+- **Auditing:** `global_trap` or a user's `trap_activity` appends their
+  keystrokes to `data/trap/trap.msg` (`trapN.msg` with `trap_separate`);
+  `auto_chat_capture` or `chat_auto` records SysOp chats to `chat.msg`
+  (`chatN.msg`); `slog_separate` copies a user's log lines to
+  `slogN.node`. The user flags are in the `%` user editor and import from
+  USER.LST.
 - **Events:** `[[events]]` in the config: ACS-restricted logon windows, timed
   shell commands, and time chop before an event.
 

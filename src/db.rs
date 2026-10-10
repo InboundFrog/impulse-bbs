@@ -71,6 +71,14 @@ pub struct User {
     /// File list columns (fflag): N name, S size, P points, D description,
     /// E extended description, W uploader, T upload date, C download count.
     pub list_fields: String,
+    /// Keystrokes go to TRAP/TRAP.MSG, or TRAPn.MSG when separate (trapactivity).
+    pub trap_activity: bool,
+    pub trap_separate: bool,
+    /// SysOp chats are recorded to CHAT.MSG, or CHATn.MSG (chatauto).
+    pub chat_auto: bool,
+    pub chat_separate: bool,
+    /// This user's log lines also go to TRAP/SLOGn.node (slogseperate).
+    pub slog_separate: bool,
 }
 
 impl Default for User {
@@ -120,6 +128,11 @@ impl Default for User {
             last_fbase: 0,
             no_fscan: Vec::new(),
             list_fields: "NSPDE".into(),
+            trap_activity: false,
+            trap_separate: false,
+            chat_auto: false,
+            chat_separate: false,
+            slog_separate: false,
         }
     }
 }
