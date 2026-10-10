@@ -331,6 +331,10 @@ pub fn spawn(sh: Arc<Shared>, p: SerialPort) {
                     std::thread::sleep(Duration::from_secs(2));
                 }
             }
+            if let Link::Serial(l) = &link {
+                // let the last screen (a goodbye, a lockout notice) reach the caller
+                unsafe { libc::tcdrain(l.f.as_raw_fd()) };
+            }
             if p.modem
                 && let Link::Serial(l) = &link
             {
