@@ -269,6 +269,8 @@ pub struct Db {
     pub users: Vec<User>,
     pub sys: SysState,
     pub online: BTreeMap<usize, Online>,
+    /// Days of old SysOp logs kept as sysop1.log, sysop2.log... (backsysoplogs; 0 = one log).
+    pub back_logs: u32,
 }
 
 fn load<T: DeserializeOwned + Default>(p: &Path) -> io::Result<T> {
@@ -290,7 +292,7 @@ impl Db {
     pub fn open(dir: &Path) -> io::Result<Db> {
         fs::create_dir_all(dir.join("msgs"))?;
         fs::create_dir_all(dir.join("files"))?;
-        Ok(Db { dir: dir.to_path_buf(), users: load(&dir.join("users.json"))?, sys: load(&dir.join("system.json"))?, online: BTreeMap::new() })
+        Ok(Db { dir: dir.to_path_buf(), users: load(&dir.join("users.json"))?, sys: load(&dir.join("system.json"))?, online: BTreeMap::new(), back_logs: 0 })
     }
 
     pub fn save(&self) -> io::Result<()> {
@@ -397,9 +399,42 @@ impl Db {
     pub fn log(&self, line: &str) {
         use std::io::Write;
         eprintln!("{line}");
-        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(self.dir.join("sysop.log")) {
+        let p = self.dir.join("sysop.log");
+        if self.back_logs > 0 {
+            self.rotate_log(&p);
+        }
+        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(p) {
             let _ = writeln!(f, "{line}");
         }
+    }
+
+    /// The first line of a new day starts a new SysOp log: the last one gets
+    /// that day's totals and becomes sysop1.log, older ones move up a number.
+    fn rotate_log(&self, p: &Path) {
+        use std::io::Write;
+        let Ok(t) = fs::metadata(p).and_then(|m| m.modified()) else { return };
+        let day = chrono::DateTime::<chrono::Local>::from(t).format("%Y-%m-%d").to_string();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        if day == today {
+            return;
+        }
+        if let (Some(z), Ok(mut f)) =
+            (std::iter::once(&self.sys.today).chain(&self.sys.history).find(|z| z.date == day), fs::OpenOptions::new().append(true).open(p))
+        {
+            let _ = write!(
+                f,
+                "\nTotal time on........: {}\nNumber of calls......: {}\nNew users............: {}\nPublic posts.........: {}\n\
+                 Private mail sent....: {}\nFeedback sent........: {}\nDownloads today......: {}-{}k\nUploads today........: {}-{}k\n",
+                z.active, z.calls, z.new_users, z.pub_posts, z.priv_posts, z.feedback, z.downloads, z.dk, z.uploads, z.uk
+            );
+        }
+        let old = |i: u32| self.dir.join(format!("sysop{i}.log"));
+        let _ = fs::remove_file(old(self.back_logs));
+        for i in (1..self.back_logs).rev() {
+            let _ = fs::rename(old(i), old(i + 1));
+        }
+        let _ = fs::rename(p, old(1));
+        let _ = fs::write(p, format!("\nImpulse SysOp log for {today}\n\n"));
     }
 }
 
@@ -419,6 +454,31 @@ pub fn check_pw(hash: &str, pw: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn log_rotation() {
+        let dir = std::env::temp_dir().join(format!("impulse-rot-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut db = super::Db::open(&dir).unwrap();
+        db.back_logs = 2;
+        let yesterday = std::time::SystemTime::now() - std::time::Duration::from_secs(86_400);
+        let day = chrono::DateTime::<chrono::Local>::from(yesterday).format("%Y-%m-%d").to_string();
+        db.sys.today.date = day;
+        db.sys.today.calls = 7;
+        for (n, old) in [(2, "older"), (1, "old")] {
+            std::fs::write(dir.join(format!("sysop{n}.log")), old).unwrap();
+        }
+        std::fs::write(dir.join("sysop.log"), "yday\n").unwrap();
+        std::fs::File::options().write(true).open(dir.join("sysop.log")).unwrap().set_modified(yesterday).unwrap();
+        db.log("today");
+        let read = |f: &str| std::fs::read_to_string(dir.join(f)).unwrap();
+        assert!(read("sysop1.log").starts_with("yday\n") && read("sysop1.log").contains("Number of calls......: 7"));
+        assert_eq!(read("sysop2.log"), "old");
+        assert!(read("sysop.log").ends_with("today\n"));
+        db.log("again"); // same day: no rotation
+        assert_eq!(read("sysop2.log"), "old");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn passwords() {
         let h = super::hash_pw("hunter2");

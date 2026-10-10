@@ -50,6 +50,10 @@ pub struct Config {
     pub sysop_acs: String,
     /// Trap every caller's keystrokes (globaltrap).
     pub global_trap: bool,
+    /// Days of old SysOp logs kept, rotated at midnight (backsysoplogs; 0 = one log).
+    pub back_sysop_logs: u32,
+    /// Off: nobody gets screen pauses, whatever their setting (scrpause).
+    pub screen_pause: bool,
     /// Record every SysOp chat (autochatopen).
     pub auto_chat_capture: bool,
     /// Asked before every `%` SysOp command when set (checkpw).
@@ -398,6 +402,8 @@ impl Default for Config {
             nuv_no: 3,
             new_user_order: ["real_name", "city", "phone", "birthday", "sex", "ansi"].map(String::from).to_vec(),
             msop_acs: "s250".into(),
+            back_sysop_logs: 7,
+            screen_pause: true,
             cosysop_acs: "s250".into(),
             fsop_acs: "s250".into(),
             post_acs: String::new(),

@@ -344,7 +344,7 @@ impl Session {
             self.t.put(if (ch as u32) < 256 { ch as u8 } else { b'?' });
             if ch == '\n' {
                 self.lines += 1;
-                if self.paging && self.user.pause && self.lines + 1 >= self.user.page_len.max(5) {
+                if self.paging && self.user.pause && self.cfg().screen_pause && self.lines + 1 >= self.user.page_len.max(5) {
                     self.pause()?;
                 }
             }

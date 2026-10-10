@@ -69,10 +69,11 @@ fn main() {
         eprintln!("{e}");
         process::exit(1);
     });
-    let db = db::Db::open(&cfg.data_path).unwrap_or_else(|e| {
+    let mut db = db::Db::open(&cfg.data_path).unwrap_or_else(|e| {
         eprintln!("Unable to open data in {}: {e}", cfg.data_path.display());
         process::exit(1);
     });
+    db.back_logs = cfg.back_sysop_logs; // ponytail: read at startup only
     if !cfg.telnet && cfg.serial.is_empty() {
         eprintln!("Telnet is off and no [[serial]] ports are set: nobody can call.");
         process::exit(1);

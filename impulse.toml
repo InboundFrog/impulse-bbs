@@ -49,6 +49,8 @@ minutes_per_day = 60
 sysop_acs = "s255"       # the first user created gets SL 255
 global_trap = false      # record every caller's keystrokes to data/trap/trap.msg
 auto_chat_capture = false  # record every SysOp chat to data/trap/chat.msg
+back_sysop_logs = 7      # days of data/sysopN.log kept, rotated daily with totals (0 = one log)
+screen_pause = true      # false: no "more" pauses for anyone
 max_message_lines = 100
 cosysop_acs = "s250"     # Co-SysOps: mass mail to all, past full/closed mailboxes
 fsop_acs = "s250"        # File SysOps: remove anybody's files
