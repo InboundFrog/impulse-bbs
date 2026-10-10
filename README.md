@@ -92,8 +92,27 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
   The WFC editors, mail and pack run in a session, so log on over telnet
   (`telnet localhost 2323` is the local logon).
 - **Callers:** menu prompts from `[[prompts]]` (PROMPTS.DAT, picked at
-  logon or `OK` M), auto-signatures (`OK` G), per-SL download ratios
-  `[[sl_ratios]]` with `no_ratio_acs` exempt.
+  logon or `OK` M), auto-signatures (`OK` G). `[[sl_limits]]` sets calls
+  and minutes a day and download ratios per SL (`no_ratio_acs` is exempt).
+- **Logon checks:** users not yet validated are hung up unless
+  `unvalidated_logon`; `phone_pw` asks the phone number's last 4 digits;
+  `logon_pw_acs` users also give the SysOp password; failed passwords count
+  in the user's `illegal`. `slow_baud` with `slow_lockout`/`slow_hours`
+  turns away slow serial callers (NO9600, NO9600H, YES9600H).
+- **Limits:** posts, e-mail and feedback per call, mailbox size (bigger for
+  `cosysop_acs`), `OC` pages per call (then GOAWAY and a letter), quoted
+  lines, and free disk before a message. Message SysOps are exempt from
+  the per-call limits. A user's `forward_to` sends their mail on to
+  another user, and `mail_closed` closes their mailbox to all but
+  Co-SysOps. `board_sysop` lists bases a user is message SysOp of. A board
+  with `filter` strips colour and 8-bit characters from posts, and
+  `unhidden` bases are listed to users who can't enter them.
+- **Uploads:** `ul_points` per upload, or per `ul_points_kb` K. Uploaders
+  outside `ul_credit_acs` get credit when `%7` validates the file.
+  `see_unval_acs` users see unvalidated files.
+- **Logs:** `data/sysop.log` rotates daily into `sysop1.log`… with the day's
+  totals, keeping `back_sysop_logs` days. `screen_pause = false` turns
+  pauses off for everyone.
 - **Importing a 7.1 system:** `impulse import <dir with USER.LST etc.> [config]`
   into a fresh `data_path`. Users (numbers, stats, flags, colours), message
   and file bases and `*.DIR` file lists come across; the config is backed up
@@ -119,11 +138,19 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 - Menus without a help file get a generated command list. Impulse 7.1 had
   dropped its generic menus. Menu flag `G` leaves out `GLOBAL.MNU`.
 - The pulldown look is ours: 7.1's `DoPulls` isn't in the released source.
+- Base numbers are always compressed: only the bases you can enter are
+  numbered (7.1's `compressbases` on).
+- Screens are 80 columns; the user's `linelen` isn't used.
+- Per-call limits allow exactly the configured number (7.1 allowed one
+  more `OC` page than `maxchat`); 0 means no limit.
 
 ## Not carried over
 
 `MAKEWFC`: it builds `WFC.BIN`, which no 7.1 code reads. ISL `SETTIME`
 and `SETDATE` are ignored: a script shouldn't set the host clock.
+Echomail and netmail (board types, origin and tear lines, addresses, their
+colours) aren't carried over: there's no mail tosser. Neither is modem dial-out.
+`tfiledate` is left out because 7.1 never sets it.
 
 ## Layout
 
