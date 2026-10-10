@@ -1,0 +1,20 @@
+# Local services. `docker compose up -d`, then run impulse with
+#   IMPULSE_DATABASE_URL=postgres://impulse:impulse@localhost:5432/impulse
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: impulse
+      POSTGRES_PASSWORD: impulse
+      POSTGRES_DB: impulse
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U impulse"]
+      interval: 2s
+      retries: 15
+
+volumes:
+  pgdata:
