@@ -254,6 +254,11 @@ impl Session {
         self.on_since.elapsed().as_secs()
     }
 
+    /// The caller's line rate for drop files and `|LP`; telnet reports 38400.
+    pub fn line_baud(&self) -> u32 {
+        if self.t.baud == 0 { 38400 } else { self.t.baud }
+    }
+
     pub fn time_left_min(&self) -> i64 {
         let left = self.user.minutes_today - (self.on_since.elapsed().as_secs() / 60) as i64;
         match self.chop {
@@ -460,6 +465,7 @@ impl Session {
             "UC" => u.note.clone(),
             "LO" => u.city_state.clone(),
             "LD" => u.last_on.clone(),
+            "LP" => self.line_baud().to_string(),
             "PN" => u.phone.clone(),
             "CS" => u.logons.to_string(),
             "PS" => u.posts.to_string(),

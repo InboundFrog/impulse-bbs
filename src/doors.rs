@@ -99,8 +99,8 @@ impl Session {
         let left = self.time_left_min();
         let ar: String = (1..=7).filter(|i| u.ar.contains((b'A' + i - 1) as char)).map(|i| i.to_string()).collect();
         let l = [
-            "COM0:".into(),
-            "38400".into(),
+            "COM0:".into(), // doors get the caller on stdin/stdout, never the port
+            self.line_baud().to_string(),
             " 8".into(),
             " 1".into(),
             " N".into(),
@@ -146,7 +146,7 @@ impl Session {
             sf.into(),
             sl.into(),
             "COM0".into(),
-            "0 BAUD,N,8,1".into(),
+            format!("{} BAUD,N,8,1", self.t.baud),
             "0".into(),
             f.to_uppercase(),
             l.to_uppercase(),
@@ -186,7 +186,7 @@ impl Session {
             c.text_path.display().to_string(),
             c.data_path.display().to_string(),
             "SYSOP.LOG".into(),
-            "0".into(),
+            self.t.baud.to_string(), // 0 = local, as telnet was
             "0".into(),
             strip_pipes(&c.bbs_name),
             c.sysop_name.clone(),
@@ -206,9 +206,9 @@ impl Session {
         let c = self.cfg();
         let u = &self.user;
         let v = [
-            ("COMDRIVER", "TELNET".to_string()),
+            ("COMDRIVER", if self.t.baud == 0 { "TELNET" } else { "SERIAL" }.to_string()),
             ("COMPORT", "0".into()),
-            ("BPSRATE", "38400".into()),
+            ("BPSRATE", self.line_baud().to_string()),
             ("VERSION", format!("v{}", env!("CARGO_PKG_VERSION"))),
             ("BBSNAME", c.bbs_name.clone()),
             ("SYSOPNAME", c.sysop_name.clone()),
