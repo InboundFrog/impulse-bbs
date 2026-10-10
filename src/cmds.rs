@@ -160,6 +160,7 @@ impl Session {
                     'U' => self.user_editor()?,
                     'B' => self.board_editor()?,
                     'S' => self.config_editor()?,
+                    'P' => self.protocol_editor()?,
                     '#' => self.menu_editor()?,
                     'C' => self.change_user()?,
                     'L' => self.show_log()?,

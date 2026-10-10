@@ -211,6 +211,19 @@ impl Session {
         Ok(())
     }
 
+    /// `%P` (exproedit): the transfer protocol list.
+    pub fn protocol_editor(&mut self) -> io::Result<()> {
+        self.log("* Protocol edit");
+        let (_, tmpl) = tmpl::<crate::config::Protocol>("protocols");
+        let mut v = serde_json::to_value(&self.cfg().protocols).map_err(io::Error::other)?;
+        if self.edit_value("Transfer protocols", &mut v, Some(tmpl), &[])? {
+            let new = serde_json::from_value(v).map_err(io::Error::other)?;
+            self.sh.edit_cfg(|c| c.protocols = new)?;
+            self.sprint("|U1Protocols saved.")?;
+        }
+        Ok(())
+    }
+
     /// `%#` (menu_edit).
     pub fn menu_editor(&mut self) -> io::Result<()> {
         self.log("* Menu edit");
