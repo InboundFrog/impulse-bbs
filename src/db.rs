@@ -230,8 +230,8 @@ pub struct Online {
     pub forum: u8,
     /// Forum the console wants this node to join (a SysOp chat), 0 = none.
     pub pull: u8,
-    /// The caller's socket, so the console can hang them up.
-    pub sock: Option<std::net::TcpStream>,
+    /// The caller's connection, so the console can hang them up.
+    pub sock: Option<crate::serial::Link>,
     pub tap: std::sync::Arc<std::sync::Mutex<crate::term::Tap>>,
 }
 

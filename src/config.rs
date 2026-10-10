@@ -9,7 +9,11 @@ use std::path::PathBuf;
 pub struct Config {
     pub bbs_name: String,
     pub sysop_name: String,
+    /// Accept telnet callers on `listen`.
+    pub telnet: bool,
     pub listen: String,
+    /// Serial lines answered, one node each while a caller is on.
+    pub serial: Vec<SerialPort>,
     pub max_nodes: usize,
     pub data_path: PathBuf,
     pub menu_path: PathBuf,
@@ -156,6 +160,20 @@ pub struct SlRatio {
     pub kb: u32,
 }
 
+/// A serial port callers may use (a direct-connect terminal).
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct SerialPort {
+    pub device: PathBuf,
+    pub baud: u32,
+}
+
+impl Default for SerialPort {
+    fn default() -> Self {
+        SerialPort { device: "/dev/ttyUSB0".into(), baud: 9600 }
+    }
+}
+
 /// A menu prompt users can pick instead of each menu's own (PROMPTS.DAT).
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(default)]
@@ -241,7 +259,9 @@ impl Default for Config {
         Config {
             bbs_name: "Impulse BBS".into(),
             sysop_name: "SysOp".into(),
+            telnet: true,
             listen: "0.0.0.0:2323".into(),
+            serial: Vec::new(),
             max_nodes: 8,
             data_path: "data".into(),
             menu_path: "menus".into(),
@@ -382,5 +402,6 @@ pub fn templates() -> Vec<(String, serde_json::Value)> {
         tmpl::<Event>("events"),
         tmpl::<Prompt>("prompts"),
         tmpl::<SlRatio>("sl_ratios"),
+        tmpl::<SerialPort>("serial"),
     ]
 }

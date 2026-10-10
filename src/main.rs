@@ -18,6 +18,7 @@ mod multinode;
 mod nuv;
 mod qwk;
 mod script;
+mod serial;
 mod session;
 mod setup;
 mod sysop;
@@ -72,11 +73,21 @@ fn main() {
         eprintln!("Unable to open data in {}: {e}", cfg.data_path.display());
         process::exit(1);
     });
-    let listener = TcpListener::bind(&cfg.listen).unwrap_or_else(|e| {
-        eprintln!("Unable to listen on {}: {e}", cfg.listen);
+    if !cfg.telnet && cfg.serial.is_empty() {
+        eprintln!("Telnet is off and no [[serial]] ports are set: nobody can call.");
         process::exit(1);
+    }
+    let listener = cfg.telnet.then(|| {
+        TcpListener::bind(&cfg.listen).unwrap_or_else(|e| {
+            eprintln!("Unable to listen on {}: {e}", cfg.listen);
+            process::exit(1);
+        })
     });
-    println!("Impulse v{} - {} - listening on {}", env!("CARGO_PKG_VERSION"), cfg.bbs_name, cfg.listen);
+    let mut on: Vec<String> = cfg.serial.iter().map(|p| format!("{} at {}", p.device.display(), p.baud)).collect();
+    if cfg.telnet {
+        on.insert(0, cfg.listen.clone());
+    }
+    println!("Impulse v{} - {} - answering {}", env!("CARGO_PKG_VERSION"), cfg.bbs_name, on.join(", "));
     let sh = Arc::new(Shared {
         cfg: RwLock::new(Arc::new(cfg)),
         cfg_path: path,
@@ -86,22 +97,34 @@ fn main() {
     });
     events::spawn(sh.clone());
     wfc::spawn(sh.clone());
+    for p in sh.cfg().serial.clone() {
+        serial::spawn(sh.clone(), p);
+    }
+    let Some(listener) = listener else {
+        loop {
+            thread::park(); // serial threads answer; the console's Q exits
+        }
+    };
     for stream in listener.incoming().flatten() {
-        // Claim the lowest free node number, as MULTINOD.PAS assigns nodes.
-        let node = {
-            let mut db = sh.db();
-            let node = (1..=sh.cfg().max_nodes).find(|n| !db.online.contains_key(n));
-            if let Some(n) = node {
-                db.online.insert(n, db::Online { name: "Logging in".into(), doing: "Logon".into(), sock: stream.try_clone().ok(), ..Default::default() });
-            }
-            node
-        };
-        let Some(node) = node else {
-            let mut s = stream;
+        let link = serial::Link::Tcp(stream);
+        let Some(node) = claim_node(&sh, &link) else {
+            let mut s = link;
             let _ = s.write_all(b"All nodes are busy, please call back later.\r\n");
             continue;
         };
         let sh = sh.clone();
-        thread::spawn(move || session::run(sh, stream, node));
+        let peer = match &link {
+            serial::Link::Tcp(s) => s.peer_addr().map(|a| a.to_string()).unwrap_or_default(),
+            _ => String::new(),
+        };
+        thread::spawn(move || session::run(sh, link, peer, node));
     }
+}
+
+/// Claim the lowest free node number, as MULTINOD.PAS assigns nodes.
+fn claim_node(sh: &Shared, link: &serial::Link) -> Option<usize> {
+    let mut db = sh.db();
+    let node = (1..=sh.cfg().max_nodes).find(|n| !db.online.contains_key(n))?;
+    db.online.insert(node, db::Online { name: "Logging in".into(), doing: "Logon".into(), sock: link.try_clone().ok(), ..Default::default() });
+    Some(node)
 }

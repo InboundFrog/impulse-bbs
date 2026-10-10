@@ -1,7 +1,7 @@
 # Impulse BBS (Rust)
 
 A re-implementation of **Impulse 7.1**, Brandon Sneed's 1993-98 DOS BBS
-written in Turbo Pascal, as a telnet BBS in Rust. The original source
+written in Turbo Pascal, as a telnet and serial-line BBS in Rust (Unix). The original source
 (`imp71src`, about 39k lines of Pascal) was the reference.
 
 ```sh
@@ -25,7 +25,7 @@ upload checks.
 | `.MNU` menus (text format read by `MNUCONV.PAS`)     | `menu.rs`, `menus/`           |
 | `aacs1` ACS strings (`s20fA\|!rP`, `()`, `!`, `\|`)    | `acs.rs`                      |
 | `OUTPUT.PAS` pipe codes, `printf` display files      | `session.rs`                  |
-| `getc`/`setc`, FOSSIL/COM layer                      | `term.rs`                     |
+| `getc`/`setc`, FOSSIL/COM layer                      | `term.rs`, `serial.rs`        |
 | `STATUS.DAT` settings + string table                 | `impulse.toml`, `config.rs`   |
 | `USER.LST`, message bases, `*.DIR` file lists        | `data/*.json`, `db.rs`        |
 | `MAIL*.PAS` messages and e-mail, `CONF.PAS`          | `msgs.rs`                     |
@@ -68,6 +68,11 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 
 ## Running a system
 
+- **Lines:** `telnet = false` turns off the telnet listener. Each `[[serial]]`
+  entry (`device`, `baud` 300-115200) answers a direct-connect terminal at
+  8N1: a key wakes it, the caller gets the lowest free node, and the port
+  re-arms after logoff. Ports not listed are never opened. ACS `B<n>` checks
+  a serial caller's baud (n × 100); telnet callers always pass.
 - **Setting up:** `impulse init [dir]` writes the stock config, menus and
   display files (INSTALL). `impulse clean [config]` deletes every user but
   #1 and the NUV queue (MAKECLEA). `new_user_order` sets which new-user
@@ -91,7 +96,8 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 
 ## Deliberate differences
 
-- Telnet replaces modems and FOSSIL, and there's one thread per node.
+- Telnet and raw serial lines replace modems and FOSSIL: there's no
+  modem init, `ATA` or carrier detect. There's one thread per node.
 - Passwords are stored as Argon2 hashes and are case-sensitive; logons also
   try the password in capitals, which is how Impulse stored them, so
   imported users keep working.

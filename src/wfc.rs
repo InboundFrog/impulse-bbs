@@ -97,7 +97,7 @@ pub fn run(sh: &Shared, line: &str) -> Option<String> {
         }
         "K" => match db.online.get(&node).and_then(|o| o.sock.as_ref()) {
             Some(s) => {
-                let _ = s.shutdown(std::net::Shutdown::Both);
+                s.hangup();
                 format!("Node {node} hung up.")
             }
             None => format!("Node {node} isn't online."),
@@ -145,7 +145,7 @@ pub fn run(sh: &Shared, line: &str) -> Option<String> {
         "Q" => {
             for o in db.online.values() {
                 if let Some(s) = &o.sock {
-                    let _ = s.shutdown(std::net::Shutdown::Both);
+                    s.hangup();
                 }
             }
             return None;

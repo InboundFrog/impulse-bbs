@@ -9,7 +9,6 @@ use crate::{acs, events};
 use chrono::{Datelike, Local, NaiveDate, Timelike};
 use std::collections::HashMap;
 use std::io;
-use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::time::{Duration, Instant};
@@ -136,8 +135,8 @@ pub fn strip_pipes(s: &str) -> String {
     out
 }
 
-pub fn run(sh: Arc<Shared>, stream: TcpStream, node: usize) {
-    let peer = stream.peer_addr().map(|a| a.to_string()).unwrap_or_default();
+/// `peer` is the caller's address or serial device, for the log.
+pub fn run(sh: Arc<Shared>, stream: crate::serial::Link, peer: String, node: usize) {
     let idle = Duration::from_secs(sh.cfg().idle_timeout_minutes.max(1) * 60);
     let mut t = match Term::new(stream, idle) {
         Ok(t) => t,
@@ -301,7 +300,8 @@ impl Session {
                 'V' => u.sl > cfg.new_sl || u.dsl > cfg.new_dsl,
                 'W' => now.weekday().num_days_from_sunday() as i64 == n,
                 'Y' => (now.hour() * 60 + now.minute()) as i64 >= n,
-                _ => true, // B (baud): every telnet caller is fast enough
+                'B' => self.t.baud == 0 || i64::from(self.t.baud) >= n * 100, // telnet counts as fast
+                _ => true,
             }
         })
     }

@@ -3,8 +3,13 @@
 
 bbs_name = "Impulse BBS"
 sysop_name = "SysOp"
+telnet = true            # false: serial callers only
 listen = "0.0.0.0:2323"
 max_nodes = 8
+# Serial terminals (8N1, no flow control). Only ports listed here are answered.
+# [[serial]]
+# device = "/dev/ttyUSB0"
+# baud = 9600            # 300..115200
 
 data_path = "data"     # users, messages, logs (created on first run)
 menu_path = "menus"    # *.MNU menu files (Impulse text format)

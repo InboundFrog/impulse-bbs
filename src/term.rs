@@ -1,8 +1,8 @@
-//! Telnet transport and ANSI colour, standing in for the FOSSIL/COM layer
+//! Telnet/serial transport and ANSI colour, standing in for the FOSSIL/COM layer
 //! (TMPCOM.PAS) and `getc`/`setc` in COMMON.PAS.
 
 use std::io::{self, Read, Write};
-use std::net::TcpStream;
+use crate::serial::Link;
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::Duration;
 
@@ -26,7 +26,11 @@ pub fn cp437(b: &[u8]) -> String {
 }
 
 pub struct Term {
-    s: TcpStream,
+    s: Link,
+    /// Telnet IAC handling; off on a serial line.
+    telnet: bool,
+    /// Line speed for ACS `B`, 0 = telnet.
+    pub baud: u32,
     buf: Vec<u8>,
     last: u8,
     skip_lf: bool,
@@ -41,21 +45,25 @@ pub struct Term {
 }
 
 impl Term {
-    pub fn new(s: TcpStream, idle: Duration) -> io::Result<Term> {
-        s.set_read_timeout(Some(idle))?;
-        s.set_nodelay(true)?;
-        let mut t = Term { s, buf: Vec::new(), last: 0, skip_lf: false, stuffed: Default::default(), curco: 7, idle, raw: Vec::new(), tap: Default::default() };
-        // WILL ECHO + WILL SUPPRESS-GO-AHEAD: character mode, we do the echoing.
-        t.buf.extend_from_slice(&[IAC, 251, 1, IAC, 251, 3]);
+    pub fn new(s: Link, idle: Duration) -> io::Result<Term> {
+        if let Link::Tcp(s) = &s {
+            s.set_nodelay(true)?;
+        }
+        let (telnet, baud) = (s.telnet(), s.baud());
+        let mut t = Term { s, telnet, baud, buf: Vec::new(), last: 0, skip_lf: false, stuffed: Default::default(), curco: 7, idle, raw: Vec::new(), tap: Default::default() };
+        if telnet {
+            // WILL ECHO + WILL SUPPRESS-GO-AHEAD: character mode, we do the echoing.
+            t.buf.extend_from_slice(&[IAC, 251, 1, IAC, 251, 3]);
+        }
         Ok(t)
     }
 
-    /// Queue one byte of output; bare LF becomes CRLF, IAC is escaped.
+    /// Queue one byte of output; bare LF becomes CRLF, IAC is escaped (telnet).
     pub fn put(&mut self, b: u8) {
         if b == b'\n' && self.last != b'\r' {
             self.buf.push(b'\r');
         }
-        if b == IAC {
+        if b == IAC && self.telnet {
             self.buf.push(IAC);
         }
         self.buf.push(b);
@@ -88,6 +96,9 @@ impl Term {
     fn byte(&mut self) -> io::Result<u8> {
         let mut b = [0];
         loop {
+            if !self.s.wait(self.idle)? {
+                return Err(io::ErrorKind::TimedOut.into());
+            }
             match self.s.read(&mut b) {
                 Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
                 Ok(_) => return Ok(b[0]),
@@ -103,16 +114,8 @@ impl Term {
         if !self.stuffed.is_empty() {
             return Ok(true);
         }
-        // a hung-up socket refuses timeouts (EINVAL on macOS); peek then reports EOF
-        let _ = self.s.set_read_timeout(Some(wait));
-        let r = self.s.peek(&mut [0]);
-        let _ = self.s.set_read_timeout(Some(self.idle));
-        match r {
-            Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
-            Ok(_) => Ok(true),
-            Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut | io::ErrorKind::Interrupted) => Ok(false),
-            Err(e) => Err(e),
-        }
+        // EOF also counts as ready; the next getkey reports it
+        self.s.wait(wait)
     }
 
     /// Next key from the caller, with telnet negotiation stripped.
@@ -126,7 +129,7 @@ impl Term {
             let b = self.byte()?;
             let skip = std::mem::take(&mut self.skip_lf);
             match b {
-                IAC => match self.byte()? {
+                IAC if self.telnet => match self.byte()? {
                     251..=254 => {
                         self.byte()?;
                     }
@@ -199,8 +202,11 @@ impl Term {
     /// ways (transfer protocols and doors; the FOSSIL handoff in EXEC.PAS).
     /// `text` turns the caller's Enter (CR, CR LF, CR NUL) into LF for doors.
     pub fn run_external(&mut self, cmd: &mut Command, text: bool) -> io::Result<ExitStatus> {
-        // WILL/DO BINARY so 8-bit transfers survive the client.
-        self.buf.extend_from_slice(&[IAC, 251, 0, IAC, 253, 0]);
+        if self.telnet {
+            // WILL/DO BINARY so 8-bit transfers survive the client.
+            self.buf.extend_from_slice(&[IAC, 251, 0, IAC, 253, 0]);
+        }
+        let telnet = self.telnet;
         self.flush()?;
         let mut child = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()?;
         let mut cin = child.stdin.take();
@@ -210,19 +216,18 @@ impl Term {
             let mut b = [0u8; 4096];
             let mut last = 0;
             while let Ok(n @ 1..) = cout.read(&mut b) {
-                if sock.write_all(&escape_out(&b[..n], text, &mut last)).is_err() {
+                if sock.write_all(&escape_out(&b[..n], text, telnet, &mut last)).is_err() {
                     break;
                 }
             }
         });
-        self.s.set_read_timeout(Some(Duration::from_millis(100)))?;
-        let mut state = Unescape { text, ..Unescape::default() };
+        let mut state = Unescape { text, telnet, ..Unescape::default() };
         let mut b = [0u8; 4096];
         let r = loop {
             if let Some(st) = child.try_wait()? {
                 break Ok(st);
             }
-            match self.s.read(&mut b) {
+            match self.s.wait(Duration::from_millis(100)).and_then(|r| if r { self.s.read(&mut b) } else { Err(io::ErrorKind::TimedOut.into()) }) {
                 Ok(0) => {
                     let _ = child.kill();
                     break Err(io::ErrorKind::UnexpectedEof.into());
@@ -245,13 +250,12 @@ impl Term {
         drop(cin);
         let _ = child.wait();
         let _ = pump.join();
-        self.s.set_read_timeout(Some(self.idle))?;
         r
     }
 }
 
-/// Double IACs; in text mode also turn bare LF into CR LF.
-fn escape_out(b: &[u8], text: bool, last: &mut u8) -> Vec<u8> {
+/// Double IACs (telnet); in text mode also turn bare LF into CR LF.
+fn escape_out(b: &[u8], text: bool, telnet: bool, last: &mut u8) -> Vec<u8> {
     let mut v = Vec::with_capacity(b.len());
     for &x in b {
         if text && x == b'\n' && *last != b'\r' {
@@ -259,7 +263,7 @@ fn escape_out(b: &[u8], text: bool, last: &mut u8) -> Vec<u8> {
         }
         *last = x;
         v.push(x);
-        if x == IAC {
+        if x == IAC && telnet {
             v.push(IAC);
         }
     }
@@ -272,6 +276,7 @@ struct Unescape {
     /// 0 data, 1 after IAC, 2 option byte to skip, 3 in SB, 4 IAC inside SB.
     st: u8,
     text: bool,
+    telnet: bool,
     after_cr: bool,
 }
 
@@ -280,7 +285,7 @@ impl Unescape {
         let mut v = Vec::new();
         for &x in b {
             self.st = match (self.st, x) {
-                (0, IAC) => 1,
+                (0, IAC) if self.telnet => 1,
                 (0, _) if self.text => {
                     match x {
                         b'\n' | 0 if self.after_cr => {}
@@ -346,13 +351,16 @@ mod tests {
 
     #[test]
     fn telnet_escaping() {
-        assert_eq!(super::escape_out(&[1, 255, 2, 10], false, &mut 0), [1, 255, 255, 2, 10]);
-        assert_eq!(super::escape_out(b"a\nb\r\n", true, &mut 0), b"a\r\nb\r\n");
-        let mut u = super::Unescape::default();
+        assert_eq!(super::escape_out(&[1, 255, 2, 10], false, true, &mut 0), [1, 255, 255, 2, 10]);
+        assert_eq!(super::escape_out(&[1, 255], false, false, &mut 0), [1, 255]);
+        assert_eq!(super::escape_out(b"a\nb\r\n", true, true, &mut 0), b"a\r\nb\r\n");
+        let mut raw = super::Unescape::default();
+        assert_eq!(raw.feed(&[255, 251, 1]), [255, 251, 1]);
+        let mut u = super::Unescape { telnet: true, ..Default::default() };
         // IAC IAC -> 255, IAC WILL x dropped, SB ... SE dropped, split across feeds
         assert_eq!(u.feed(&[1, 255, 255, 2, 255, 251]), [1, 255, 2]);
         assert_eq!(u.feed(&[0, 3, 255, 250, 24, 0, 255, 240, 4]), [3, 4]);
-        let mut t = super::Unescape { text: true, ..Default::default() };
+        let mut t = super::Unescape { text: true, telnet: true, ..Default::default() };
         assert_eq!(t.feed(b"a\r\nb\r\0c\r"), b"a\nb\nc\n");
         assert_eq!(t.feed(b"\nd"), b"d");
     }
