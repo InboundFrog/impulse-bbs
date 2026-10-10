@@ -77,7 +77,13 @@ fn main() {
         process::exit(1);
     });
     println!("Impulse v{} - {} - listening on {}", env!("CARGO_PKG_VERSION"), cfg.bbs_name, cfg.listen);
-    let sh = Arc::new(Shared { cfg: RwLock::new(Arc::new(cfg)), cfg_path: path, db: Mutex::new(db), console_forum: Default::default() });
+    let sh = Arc::new(Shared {
+        cfg: RwLock::new(Arc::new(cfg)),
+        cfg_path: path,
+        db: Mutex::new(db),
+        console_forum: Default::default(),
+        console_avail: std::io::IsTerminal::is_terminal(&std::io::stdin()).into(),
+    });
     events::spawn(sh.clone());
     wfc::spawn(sh.clone());
     for stream in listener.incoming().flatten() {

@@ -12,6 +12,7 @@ const HELP: &str = "  W           who's online
   M node text send a node message (node 0 = everyone)
   K node      hang up a node
   C node      chat with a node (/Q ends)
+  A           toggle whether callers can page you (OC)
   V [node]    watch a node live (V alone stops)
   B node [n]  a node's last n lines of scrollback (default 24)
   L [n]       last n lines of the SysOp log (default 20)
@@ -101,6 +102,10 @@ pub fn run(sh: &Shared, line: &str) -> Option<String> {
             }
             None => format!("Node {node} isn't online."),
         },
+        "A" => {
+            let on = !sh.console_avail.fetch_xor(true, Ordering::Relaxed);
+            format!("Paging is {}.", if on { "on" } else { "off" })
+        }
         "C" => match db.online.get_mut(&node) {
             Some(o) => {
                 // OC pages use forum 10 + node, so a waiting page is answered here too

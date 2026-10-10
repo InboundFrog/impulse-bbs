@@ -22,6 +22,8 @@ pub struct Shared {
     pub db: Mutex<Db>,
     /// Chat forum the console has joined (`C node`), 0 = none.
     pub console_forum: std::sync::atomic::AtomicU8,
+    /// SysOp at the console can be paged (`A` toggles; on when stdin is a terminal).
+    pub console_avail: std::sync::atomic::AtomicBool,
 }
 
 impl Shared {

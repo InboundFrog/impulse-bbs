@@ -418,7 +418,6 @@ impl Session {
     }
 
     /// `OC`: page a SysOp who's on another node into a private forum.
-    // ponytail: no local console, so only SysOps logged on to a node can answer
     pub fn chat(&mut self, _data: &str) -> io::Result<()> {
         let sysops: Vec<usize> = {
             let db = self.sh.db();
@@ -430,7 +429,8 @@ impl Session {
                 .map(|(n, _)| *n)
                 .collect()
         };
-        if sysops.is_empty() {
+        let console = self.sh.console_avail.load(std::sync::atomic::Ordering::Relaxed);
+        if sysops.is_empty() && !console {
             self.sprint("|NL|U1The SysOp isn't available for chat right now.")?;
             if self.pynq("|U1Leave a message to the SysOp instead? ", true)? {
                 self.send_email("1")?;
@@ -448,6 +448,9 @@ impl Session {
                     self.user.name, self.node
                 ),
             );
+        }
+        if console {
+            println!("\x07Node {} ({}) is paging you for chat: {why}  - type C {} to answer", self.node, self.user.name, self.node);
         }
         self.log(&format!("Chat request: {why}"));
         self.sprint("|U1Paging the SysOp... wait in the chat forum.")?;
