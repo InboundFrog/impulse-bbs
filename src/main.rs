@@ -94,6 +94,7 @@ fn main() {
         db: Mutex::new(db),
         console_forum: Default::default(),
         console_avail: std::io::IsTerminal::is_terminal(&std::io::stdin()).into(),
+        offhook: Default::default(),
     });
     events::spawn(sh.clone());
     wfc::spawn(sh.clone());

@@ -23,6 +23,8 @@ pub struct Shared {
     pub console_forum: std::sync::atomic::AtomicU8,
     /// SysOp at the console can be paged (`A` toggles; on when stdin is a terminal).
     pub console_avail: std::sync::atomic::AtomicBool,
+    /// Modems are off hook (busy), console `O`.
+    pub offhook: std::sync::atomic::AtomicBool,
 }
 
 impl Shared {

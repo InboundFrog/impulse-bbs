@@ -174,6 +174,10 @@ pub struct SerialPort {
     pub init: String,
     pub answer: String,
     pub hangup: String,
+    /// Sent by the console's `O` so callers get a busy signal.
+    pub offhook: String,
+    /// RINGs before answering; 2 lets caller ID arrive first.
+    pub rings: u8,
     /// Re-init the modem after this many minutes without a call, 0 = never.
     pub init_minutes: u64,
 }
@@ -188,6 +192,8 @@ impl Default for SerialPort {
             init: "ATZ|~ATE0V1Q0S0=0".into(),
             answer: "ATA".into(),
             hangup: "~~~+++~~~ATH0".into(),
+            offhook: "ATH1M0".into(),
+            rings: 1,
             init_minutes: 30,
         }
     }

@@ -193,11 +193,10 @@ fn modem_send(l: &mut Link, s: &str) -> io::Result<()> {
     l.write_all(b"\r")
 }
 
-/// Next non-empty result line from the modem, None after `wait`.
+/// Next non-empty result line from the modem, None after `wait` of silence.
 fn modem_line(l: &mut Link, wait: Duration) -> io::Result<Option<String>> {
-    let end = Instant::now() + wait;
     let mut s = Vec::new();
-    while l.wait(end.saturating_duration_since(Instant::now()))? {
+    while s.len() < 256 && l.wait(wait)? {
         let mut b = [0];
         if l.read(&mut b)? == 0 {
             return Err(io::ErrorKind::UnexpectedEof.into());
@@ -208,7 +207,7 @@ fn modem_line(l: &mut Link, wait: Duration) -> io::Result<Option<String>> {
             c => s.push(c),
         }
     }
-    Ok(None)
+    Ok((!s.is_empty()).then(|| String::from_utf8_lossy(&s).trim().to_string()))
 }
 
 /// Send `cmd`, then wait for a line starting with one of `want`.
@@ -218,6 +217,9 @@ fn modem_cmd(l: &mut Link, cmd: &str, want: &[&str], wait: Duration) -> io::Resu
     }
     let end = Instant::now() + wait;
     while let Some(r) = modem_line(l, end.saturating_duration_since(Instant::now()))? {
+        if Instant::now() > end {
+            break;
+        }
         if want.iter().any(|w| r.starts_with(w)) {
             return Ok(Some(r));
         }
@@ -231,21 +233,59 @@ fn connect_baud(r: &str) -> u32 {
     n.parse().unwrap_or(300)
 }
 
-/// Wait for a call on a dial-in modem: init, RING, answer, CONNECT.
-/// Ok(None) asks for a re-init (no call in `init_minutes`, or init failed).
-fn answer(p: &SerialPort, l: &mut Link) -> io::Result<Option<(Line, String)>> {
+/// Console `O` (WFC "take off hook"): send `offhook` and stay busy until cleared.
+fn busy(sh: &Shared, p: &SerialPort, l: &mut Link) -> io::Result<()> {
+    modem_cmd(l, &p.offhook, &["OK"], Duration::from_secs(3))?;
+    while sh.offhook.load(Ordering::Relaxed) {
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    Ok(())
+}
+
+/// Wait for a call on a dial-in modem: init, `rings` RINGs, answer, CONNECT.
+/// Caller ID lines (NMBR = / NAME =) ride along with the CONNECT result.
+/// Ok(None) asks for a re-init (no call in `init_minutes`, init failed, off hook).
+fn answer(sh: &Shared, p: &SerialPort, l: &mut Link) -> io::Result<Option<(Line, String)>> {
+    if sh.offhook.load(Ordering::Relaxed) {
+        busy(sh, p, l)?;
+        return Ok(None);
+    }
     if modem_cmd(l, &p.init, &["OK"], Duration::from_secs(5))?.is_none() {
         eprintln!("Serial {}: modem didn't answer init {:?}; retrying in 30s", p.device.display(), p.init);
         std::thread::sleep(Duration::from_secs(30));
         return Ok(None);
     }
-    let idle = if p.init_minutes == 0 { Duration::MAX } else { Duration::from_secs(p.init_minutes * 60) };
-    let r = match modem_line(l, idle)? {
-        Some(r) if r.starts_with("RING") => modem_cmd(l, &p.answer, &["CONNECT", "NO CARRIER", "BUSY", "ERROR", "NO ANSWER"], Duration::from_secs(60))?,
-        r => r, // CONNECT straight away if the modem auto-answers (S0>0)
+    let reinit = (p.init_minutes > 0).then(|| Instant::now() + Duration::from_secs(p.init_minutes * 60));
+    let (mut rings, mut last_ring, mut cid) = (0, Instant::now(), Vec::new());
+    let r = loop {
+        if sh.offhook.load(Ordering::Relaxed) {
+            busy(sh, p, l)?;
+            return Ok(None);
+        }
+        if reinit.is_some_and(|t| Instant::now() >= t) {
+            return Ok(None);
+        }
+        if rings > 0 && last_ring.elapsed() > Duration::from_secs(10) {
+            (rings, cid) = (0, Vec::new()); // the caller gave up
+        }
+        let Some(r) = modem_line(l, Duration::from_secs(1))? else { continue };
+        if r.starts_with("RING") {
+            (rings, last_ring) = (rings + 1, Instant::now());
+            if rings >= p.rings.max(1) {
+                break modem_cmd(l, &p.answer, &["CONNECT", "NO CARRIER", "BUSY", "ERROR", "NO ANSWER"], Duration::from_secs(60))?;
+            }
+        } else if r.starts_with("NMBR") || r.starts_with("NAME") {
+            cid.push(r);
+        } else if r.starts_with("CONNECT") {
+            break Some(r); // the modem auto-answered (S0>0)
+        }
     };
     match (r, l) {
-        (Some(r), Link::Serial(line)) if r.starts_with("CONNECT") => Ok(Some((line.clone_as(connect_baud(&r), true)?, r))),
+        (Some(r), Link::Serial(line)) if r.starts_with("CONNECT") => {
+            let baud = connect_baud(&r);
+            cid.insert(0, r);
+            Ok(Some((line.clone_as(baud, true)?, cid.join(", "))))
+        }
         _ => Ok(None),
     }
 }
@@ -264,7 +304,7 @@ pub fn spawn(sh: Arc<Shared>, p: SerialPort) {
             };
             let mut peer = p.device.display().to_string();
             let call = if p.modem {
-                match answer(&p, &mut link) {
+                match answer(&sh, &p, &mut link) {
                     Ok(Some((line, connect))) => {
                         peer = format!("{peer} ({connect})");
                         Link::Serial(line)

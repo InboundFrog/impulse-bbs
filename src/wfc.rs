@@ -13,6 +13,7 @@ const HELP: &str = "  W           who's online
   K node      hang up a node
   C node      chat with a node (/Q ends)
   A           toggle whether callers can page you (OC)
+  O           take idle modems off hook (busy) / put them back
   V [node]    watch a node live (V alone stops)
   B node [n]  a node's last n lines of scrollback (default 24)
   L [n]       last n lines of the SysOp log (default 20)
@@ -105,6 +106,10 @@ pub fn run(sh: &Shared, line: &str) -> Option<String> {
         "A" => {
             let on = !sh.console_avail.fetch_xor(true, Ordering::Relaxed);
             format!("Paging is {}.", if on { "on" } else { "off" })
+        }
+        "O" => {
+            let off = !sh.offhook.fetch_xor(true, Ordering::Relaxed);
+            if off { "Idle modems going off hook (busy).".into() } else { "Modems answering again.".into() }
         }
         "C" => match db.online.get_mut(&node) {
             Some(o) => {

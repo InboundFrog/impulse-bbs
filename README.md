@@ -75,7 +75,9 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
   is a dial-in modem (MODEM.DAT): `init` must get `OK`, `RING` is
   answered with `answer`, the caller's rate comes from `CONNECT`, a dropped
   carrier ends the call, and afterwards DTR is dropped and `hangup` sent.
-  The modem is re-initialised after `init_minutes` without a call. ACS
+  The modem is re-initialised after `init_minutes` without a call.
+  `rings = 2` waits for caller ID (`NMBR`/`NAME`, logged with the
+  connect). Drop files and `|LP` carry the caller's rate. ACS
   `B<n>` checks a serial caller's rate (n × 100); telnet callers always pass.
 - **Setting up:** `impulse init [dir]` writes the stock config, menus and
   display files (INSTALL). `impulse clean [config]` deletes every user but
@@ -85,7 +87,8 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
   today's stats, `M node text` node message (0 = all), `K node` hang up,
   `V node` watch a node live (the local screen), `B node [n]` its
   scrollback, `C node` chat with a caller (`/Q` ends), `A` toggle SysOp
-  available (an `OC` page beeps here), `L [n]` log tail, `Q` shut down.
+  available (an `OC` page beeps here), `O` take idle modems off hook
+  (busy) and back, `L [n]` log tail, `Q` shut down.
   The WFC editors, mail and pack run in a session, so log on over telnet
   (`telnet localhost 2323` is the local logon).
 - **Callers:** menu prompts from `[[prompts]]` (PROMPTS.DAT, picked at
@@ -100,9 +103,9 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 
 ## Deliberate differences
 
-- Telnet and Unix serial ports replace FOSSIL; modems only answer (no
-  dial-out or off-hook). Doors still talk over pipes, so drop files say
-  `TELNET`. There's one thread per node.
+- Telnet and Unix serial ports replace FOSSIL; modems answer but never
+  dial out. Doors talk to the caller over pipes, so drop files name
+  `COM0` (local) with the real rate. There's one thread per node.
 - Passwords are stored as Argon2 hashes and are case-sensitive; logons also
   try the password in capitals, which is how Impulse stored them, so
   imported users keep working.
