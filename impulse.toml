@@ -50,11 +50,24 @@ sysop_acs = "s255"       # the first user created gets SL 255
 global_trap = false      # record every caller's keystrokes to data/trap/trap.msg
 auto_chat_capture = false  # record every SysOp chat to data/trap/chat.msg
 max_message_lines = 100
+cosysop_acs = "s250"     # Co-SysOps: mass mail to all, past full/closed mailboxes
+fsop_acs = "s250"        # File SysOps: remove anybody's files
+post_acs = ""            # needed to post on any base
+mail_acs = ""            # needed to send e-mail
+max_posts_per_call = 20  # message SysOps are exempt; 0 = no limit
+max_mail_per_call = 20
+max_feedback_per_call = 5
+max_waiting = 50         # letters a mailbox holds (0 = no limit)
+cosysop_max_waiting = 100
+max_chat_pages = 3       # OC pages per call, then GOAWAY and a letter instead
+max_quote_lines = 50
+min_post_space_kb = 100  # refuse to start a message with less free disk
 
 [[boards]]
 name = "General"
 file = "general"
 post_acs = "s20"
+# filter = false        # strip colour and 8-bit/control characters from posts
 
 [[boards]]
 name = "SysOp Lounge"

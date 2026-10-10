@@ -1,8 +1,8 @@
 //! Telnet/serial transport and ANSI colour, standing in for the FOSSIL/COM layer
 //! (TMPCOM.PAS) and `getc`/`setc` in COMMON.PAS.
 
-use std::io::{self, Read, Write};
 use crate::serial::Link;
+use std::io::{self, Read, Write};
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::Duration;
 
@@ -52,7 +52,20 @@ impl Term {
             s.set_nodelay(true)?;
         }
         let (telnet, baud) = (s.telnet(), s.baud());
-        let mut t = Term { s, telnet, baud, buf: Vec::new(), last: 0, skip_lf: false, stuffed: Default::default(), curco: 7, idle, raw: Vec::new(), tap: Default::default(), trap: None };
+        let mut t = Term {
+            s,
+            telnet,
+            baud,
+            buf: Vec::new(),
+            last: 0,
+            skip_lf: false,
+            stuffed: Default::default(),
+            curco: 7,
+            idle,
+            raw: Vec::new(),
+            tap: Default::default(),
+            trap: None,
+        };
         if telnet {
             // WILL ECHO + WILL SUPPRESS-GO-AHEAD: character mode, we do the echoing.
             t.buf.extend_from_slice(&[IAC, 251, 1, IAC, 251, 3]);

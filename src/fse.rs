@@ -390,7 +390,12 @@ impl Session {
         self.sprompt(&format!("|U1Quote from line (1-{}): |U3", m.body.len()))?;
         let a = self.input(3)?.parse::<usize>().unwrap_or(0);
         self.sprompt(&format!("|U1To line ({a}-{}): |U3", m.body.len()))?;
-        let z = self.input(3)?.parse::<usize>().unwrap_or(a).min(m.body.len());
+        let mut z = self.input(3)?.parse::<usize>().unwrap_or(a).min(m.body.len());
+        let max = self.cfg().max_quote_lines;
+        if max > 0 && a >= 1 && z + 1 > a + max {
+            self.sprint("|07Too many lines in quote")?;
+            z = a + max - 1;
+        }
         if a < 1 {
             return Ok(Vec::new());
         }

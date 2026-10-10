@@ -57,6 +57,28 @@ pub struct Config {
     pub max_message_lines: usize,
     /// Message SysOps: validate, move, extract and make messages permanent.
     pub msop_acs: String,
+    /// Co-SysOps (csop): mass mail to all or by ACS, mail to themselves,
+    /// past closed and full mailboxes, and a bigger mailbox of their own.
+    pub cosysop_acs: String,
+    /// File SysOps (fsop): remove anybody's files.
+    pub fsop_acs: String,
+    /// Needed to post on any base / send any e-mail (normpubpost, normprivpost).
+    pub post_acs: String,
+    pub mail_acs: String,
+    /// Posts, e-mail and feedback allowed per call; message SysOps are exempt
+    /// (maxpubpost, maxprivpost, maxfback; 0 = no limit).
+    pub max_posts_per_call: u32,
+    pub max_mail_per_call: u32,
+    pub max_feedback_per_call: u32,
+    /// Letters a mailbox holds, and for Co-SysOps (maxwaiting, csmaxwaiting; 0 = no limit).
+    pub max_waiting: usize,
+    pub cosysop_max_waiting: usize,
+    /// `OC` pages per call before the GOAWAY file (maxchat; 0 = no limit).
+    pub max_chat_pages: u32,
+    /// Most lines quoted at once (csmaxlines; 0 = no limit).
+    pub max_quote_lines: usize,
+    /// Free disk (K) needed to save a message (minspaceforpost).
+    pub min_post_space_kb: u64,
     /// See who posted anonymously, in public and in e-mail.
     pub anon_pub_read: String,
     pub anon_priv_read: String,
@@ -268,6 +290,8 @@ pub struct Board {
     pub password: String,
     /// Posts are made under real names.
     pub real_names: bool,
+    /// Public posts lose colour codes; control and 8-bit characters become `*` (mbfilter).
+    pub filter: bool,
     /// Conference number; 0 shows the base in every conference.
     pub conf: usize,
 }
@@ -366,6 +390,18 @@ impl Default for Config {
             nuv_no: 3,
             new_user_order: ["real_name", "city", "phone", "birthday", "sex", "ansi"].map(String::from).to_vec(),
             msop_acs: "s250".into(),
+            cosysop_acs: "s250".into(),
+            fsop_acs: "s250".into(),
+            post_acs: String::new(),
+            mail_acs: String::new(),
+            max_posts_per_call: 20,
+            max_mail_per_call: 20,
+            max_feedback_per_call: 5,
+            max_waiting: 50,
+            cosysop_max_waiting: 100,
+            max_chat_pages: 3,
+            max_quote_lines: 50,
+            min_post_space_kb: 100,
             anon_pub_read: "s250".into(),
             anon_priv_read: "s250".into(),
             anon_pub_post: "s250".into(),

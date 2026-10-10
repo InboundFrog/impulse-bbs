@@ -192,6 +192,10 @@ impl Session {
             let subject = if r.subject.is_empty() { "(no subject)".to_string() } else { r.subject.clone() };
             if r.conf == 0 || r.private {
                 let found = self.sh.db().find_user(&r.to);
+                let found = match found {
+                    Some(n) => self.mail_dest(n)?,
+                    None => None,
+                };
                 match found {
                     Some(n) if !self.user.ac.contains('E') => {
                         let to = self.sh.db().users[n - 1].name.clone();

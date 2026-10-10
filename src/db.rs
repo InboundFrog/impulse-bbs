@@ -81,6 +81,14 @@ pub struct User {
     pub chat_separate: bool,
     /// This user's log lines also go to TRAP/SLOGn.node (slogseperate).
     pub slog_separate: bool,
+    /// Mail for this user goes to this user number instead (forusr; 0 = none).
+    pub forward_to: usize,
+    /// Mailbox closed: nobody but Co-SysOps can write (nomail).
+    pub mail_closed: bool,
+    /// Board files this user is message SysOp of (boardsysop).
+    pub board_sysop: Vec<String>,
+    /// Beep the console when this user logs on (alert).
+    pub alert: bool,
 }
 
 impl Default for User {
@@ -136,6 +144,10 @@ impl Default for User {
             chat_auto: false,
             chat_separate: false,
             slog_separate: false,
+            forward_to: 0,
+            mail_closed: false,
+            board_sysop: Vec::new(),
+            alert: false,
         }
     }
 }

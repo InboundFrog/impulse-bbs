@@ -101,6 +101,11 @@ pub struct Session {
     on_since: Instant,
     lines: u16,
     paging: bool,
+    /// This call's posts, e-mail, feedback and chat pages (ptoday, etoday, ftoday, chatt).
+    pub posts_call: u32,
+    pub mail_call: u32,
+    pub fback_call: u32,
+    pub chat_pages: u32,
 }
 
 pub fn today() -> String {
@@ -176,6 +181,10 @@ pub fn run(sh: Arc<Shared>, stream: crate::serial::Link, peer: String, node: usi
         on_since: Instant::now(),
         lines: 0,
         paging: true,
+        posts_call: 0,
+        mail_call: 0,
+        fback_call: 0,
+        chat_pages: 0,
     };
     s.log(&format!("Connect from {peer}"));
     if let Err(e) = s.main()
@@ -1001,6 +1010,12 @@ impl Session {
         }
         if self.nuv_pending() {
             self.new_user_vote()?;
+        }
+        if self.user.forward_to != 0 {
+            self.sprint(&format!("|NL|07Your mail is being forwarded to user #{}", self.user.forward_to))?;
+        }
+        if self.user.alert {
+            println!("\x07{} is on node {}", self.user.name, self.node);
         }
         let waiting = self.sh.db().msgs("email")?.iter().filter(|m| m.to_num == self.unum).count();
         if waiting > 0 && self.pynq(&format!("|NL|U1You have |U3{waiting}|U1 letter(s) waiting. Read them now? "), true)? {

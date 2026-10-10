@@ -457,7 +457,7 @@ impl Session {
 }
 
 /// Size and free bytes of the filesystem holding `dir` (DiskSize/DiskFree), from df(1).
-fn disk(dir: &std::path::Path) -> Option<(u64, u64)> {
+pub fn disk(dir: &std::path::Path) -> Option<(u64, u64)> {
     let out = std::process::Command::new("df").arg("-kP").arg(dir).output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let f: Vec<u64> = text.lines().nth(1)?.split_whitespace().skip(1).take(3).filter_map(|n| n.parse().ok()).collect();

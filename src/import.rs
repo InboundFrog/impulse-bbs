@@ -111,6 +111,8 @@ fn user(b: &[u8], boards: &[Board], fbases: &[FBase]) -> (User, Vec<u16>) {
     u.pause = has(&ac, 13, 0);
     u.novice = has(&ac, 14, 0);
     u.ansi = has(&ac, 15, 0);
+    u.alert = has(&ac, 17, 0);
+    u.mail_closed = has(&ac, 19, 0);
     u.fse = u.ansi;
     let ff = r.take(1).to_vec();
     u.list_fields = "NSPDEWTC".chars().enumerate().filter(|&(i, _)| has(&ff, i, 0)).map(|(_, c)| c).collect();
@@ -136,7 +138,8 @@ fn user(b: &[u8], boards: &[Board], fbases: &[FBase]) -> (User, Vec<u16>) {
     u.minutes_today = r.i16() as i64;
     u.posts = r.i16().max(0) as u32;
     u.emails = r.i16().max(0) as u32;
-    r.skip(4); // feedback, forward
+    r.skip(2); // feedback
+    u.forward_to = r.i16().max(0) as usize;
     u.file_points = r.i16() as i32;
     r.skip(2); // waiting, linelen
     u.page_len = r.u8().max(5) as u16;
@@ -151,7 +154,7 @@ fn user(b: &[u8], boards: &[Board], fbases: &[FBase]) -> (User, Vec<u16>) {
     u.last_fbase = r.u8() as usize;
     r.skip(4 + 2);
     u.time_bank = r.i16() as i64;
-    r.skip(5); // boardsysop
+    u.board_sysop = r.take(5).iter().filter_map(|&b| boards.get((b as usize).checked_sub(1)?)).map(|b| b.file.clone()).collect();
     (u.trap_activity, u.trap_separate) = (r.u8() != 0, r.u8() != 0);
     r.skip(2 + 4);
     (u.chat_auto, u.chat_separate) = (r.u8() != 0, r.u8() != 0);
@@ -184,7 +187,7 @@ fn board(b: &[u8]) -> Board {
     r.skip(4 + 8);
     let conf = r.u8() as usize;
     debug_assert_eq!(r.p + 2, BOARD_LEN);
-    Board { name, file, acs, post_acs, mci_acs, max_msgs, anonymous, password, real_names: has(&stat, 1, 0), conf }
+    Board { name, file, acs, post_acs, mci_acs, max_msgs, anonymous, password, real_names: has(&stat, 1, 0), filter: has(&stat, 4, 0), conf }
 }
 
 /// The base plus its .DIR file name and whether that lives in the dl path.

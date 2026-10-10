@@ -5,6 +5,16 @@ use crate::db::Msg;
 use crate::session::{Session, now, strip_pipes};
 use std::io;
 
+/// Past a per-call limit; 0 = no limit.
+fn over(n: u32, max: u32) -> bool {
+    max > 0 && n >= max
+}
+
+/// mbfilter: no colour codes; control and 8-bit characters become `*`.
+fn filter(l: &str) -> String {
+    strip_pipes(l).chars().map(|c| if c < ' ' || c as u32 >= 127 { '*' } else { c }).collect()
+}
+
 fn re(s: &str) -> String {
     if s.starts_with("Re:") { s.to_string() } else { format!("Re: {s}") }
 }
@@ -29,9 +39,20 @@ const MAIL_HELP: &[&str] = &[
 impl Session {
     // ---- message bases ----------------------------------------------------
 
-    /// Message SysOp (mso).
+    /// Co-SysOp (cso).
+    pub fn cso(&self) -> bool {
+        self.is_sysop() || self.acs(&self.cfg().cosysop_acs)
+    }
+
+    /// File SysOp (fso).
+    pub fn fso(&self) -> bool {
+        self.cso() || self.acs(&self.cfg().fsop_acs)
+    }
+
+    /// Message SysOp (mso): of every base, or of this one (boardsysop).
     pub fn mso(&self) -> bool {
-        self.is_sysop() || self.acs(&self.cfg().msop_acs)
+        let c = self.cfg();
+        self.cso() || self.acs(&c.msop_acs) || c.boards.get(self.board).is_some_and(|b| self.user.board_sysop.contains(&b.file))
     }
 
     /// Board indexes this user may read.
@@ -514,6 +535,12 @@ impl Session {
     /// Line editor: `/S` saves, `/A` aborts, `/L` lists, `/Q` quotes.
     /// ANSI callers who picked it get the full-screen editor instead.
     pub fn editor(&mut self, max: usize, to: &str, subject: &str, quote: Option<&Msg>) -> io::Result<Option<Vec<String>>> {
+        let min = self.cfg().min_post_space_kb;
+        if min > 0 && crate::script::disk(&self.cfg().data_path).is_some_and(|(_, free)| free / 1024 < min) {
+            self.sprint("|NL|12Not enough disk space to save a message.")?;
+            self.log("Drive full! Insufficient space to save a message!");
+            return Ok(None);
+        }
         if self.user.ansi && self.user.fse {
             return self.fse(max, to, subject, quote);
         }
@@ -550,7 +577,7 @@ impl Session {
     }
 
     pub fn can_post(&self, board: &Board) -> bool {
-        !self.user.ac.contains('P') && self.acs(&board.post_acs)
+        !self.user.ac.contains('P') && self.acs(&self.cfg().post_acs) && self.acs(&board.post_acs)
     }
 
     /// Anonymous status for a new post (`None` board = e-mail).
@@ -600,6 +627,9 @@ impl Session {
         if !self.can_post(&board) {
             return self.sprint("|NL|12You can't post on this base.");
         }
+        if over(self.posts_call, self.cfg().max_posts_per_call) && !self.mso() {
+            return self.sprint("|NL|12Too many messages posted today.");
+        }
         if !self.board_ok(b)? {
             return Ok(());
         }
@@ -624,6 +654,9 @@ impl Session {
             subject = strip_pipes(&subject);
             body = body.iter().map(|l| strip_pipes(l)).collect();
         }
+        if board.filter {
+            body = body.iter().map(|l| filter(l)).collect();
+        }
         let from = if board.real_names && !self.user.real_name.is_empty() { self.user.real_name.clone() } else { self.user.name.clone() };
         let m = Msg { from, from_num: self.unum, to, subject, date: now(), body, anon, alias, reply_to: reply.map_or(0, |m| m.id), ..Msg::default() };
         self.store_post(&board, m)?;
@@ -639,6 +672,7 @@ impl Session {
             db.post(&board.file, m, board.max_msgs)?;
         }
         self.user.posts += 1;
+        self.posts_call += 1;
         self.save_user();
         self.log(&format!("Posted on {}", board.name));
         Ok(())
@@ -647,11 +681,60 @@ impl Session {
     // ---- e-mail -------------------------------------------------------------
 
     fn can_mail(&mut self) -> io::Result<bool> {
-        if self.user.ac.contains('E') {
+        if self.mso() {
+            return Ok(true);
+        }
+        if self.user.ac.contains('E') || !self.acs(&self.cfg().mail_acs) {
             self.sprint("|NL|12You can't send e-mail.")?;
             return Ok(false);
         }
+        if over(self.mail_call, self.cfg().max_mail_per_call) {
+            self.sprint("|NL|12Too much mail sent today.")?;
+            return Ok(false);
+        }
         Ok(true)
+    }
+
+    /// Where mail for user `n` ends up after forwarding (forwardm), if it
+    /// may go there (moremail); Co-SysOps get past full and closed mailboxes.
+    pub fn mail_dest(&mut self, n: usize) -> io::Result<Option<usize>> {
+        let (mut cur, mut seen) = (n, vec![]);
+        let u = loop {
+            let u = self.sh.db().users.get(cur.wrapping_sub(1)).cloned();
+            match u {
+                None => return self.no_mail("No such user."),
+                Some(u) if u.deleted => return self.no_mail("That user has been deleted."),
+                Some(u) if u.forward_to == 0 => break u,
+                Some(u) => {
+                    seen.push(cur);
+                    cur = u.forward_to;
+                    if seen.contains(&cur) {
+                        return self.no_mail("Can't send mail to that user.");
+                    }
+                }
+            }
+        };
+        if cur != n {
+            self.sprint(&format!("|U1Mail forwarded to |U3{}|U1 #{cur}.", u.name))?;
+        }
+        let c = self.cfg();
+        let max = if self.acs_for(&u, cur, &c.cosysop_acs) { c.cosysop_max_waiting } else { c.max_waiting };
+        let waiting = if max == 0 { 0 } else { self.sh.db().msgs("email")?.iter().filter(|m| m.to_num == cur).count() };
+        let why = if over(waiting as u32, max as u32) {
+            "That user's mailbox is full."
+        } else if u.mail_closed {
+            "That user's mailbox is closed."
+        } else if cur == self.unum {
+            "Why do you want to send mail to yourself!??!"
+        } else {
+            return Ok(Some(cur));
+        };
+        if self.cso() { Ok(Some(cur)) } else { self.no_mail(why) }
+    }
+
+    fn no_mail(&mut self, why: &str) -> io::Result<Option<usize>> {
+        self.sprint(&format!("|12{why}"))?;
+        Ok(None)
     }
 
     pub fn send_email(&mut self, data: &str) -> io::Result<()> {
@@ -667,6 +750,10 @@ impl Session {
         };
         let found = self.sh.db().find_user(&to);
         let Some(n) = found else { return self.sprint("|12No such user.") };
+        let Some(n) = self.mail_dest(n)? else { return Ok(()) };
+        if n == 1 && over(self.fback_call, self.cfg().max_feedback_per_call) && !self.mso() {
+            return self.sprint("|12Too much feedback sent today.");
+        }
         let to_name = self.sh.db().users[n - 1].name.clone();
         self.sprompt("|U1To: |U3")?;
         self.out(&to_name)?;
@@ -714,6 +801,11 @@ impl Session {
             }
         }
         self.user.emails += to.len() as u32;
+        if to.iter().any(|t| t.0 != 1) {
+            self.mail_call += 1;
+        } else {
+            self.fback_call += 1;
+        }
         self.save_user();
         Ok(())
     }
@@ -726,12 +818,10 @@ impl Session {
         if (m.anon != 0 && !self.sees_anon(m, private)) || m.from_num == 0 {
             return self.sprint("|NL|U1Can't reply now.");
         }
-        if m.from_num == self.unum {
-            return self.sprint("|NL|U1Can't send mail to yourself!");
-        }
-        let name = self.sh.db().users.get(m.from_num - 1).map(|u| u.name.clone());
+        let Some(n) = self.mail_dest(m.from_num)? else { return Ok(()) };
+        let name = self.sh.db().users.get(n - 1).map(|u| u.name.clone());
         let Some(name) = name else { return self.sprint("|12No such user.") };
-        self.email_to(m.from_num, name, re(&m.subject), Some(m))
+        self.email_to(n, name, re(&m.subject), Some(m))
     }
 
     /// `ML` (smail): one letter to up to 20 users, or by ACS / to everyone
@@ -740,7 +830,7 @@ impl Session {
         if !self.can_mail()? {
             return Ok(());
         }
-        let cso = self.is_sysop();
+        let cso = self.cso();
         self.sprint("|NL|U1Mass mail: send mail to more than one user.")?;
         self.sprint("|U1Enter up to 20 user numbers or names, separated by commas.")?;
         if cso {
@@ -765,12 +855,19 @@ impl Session {
             _ => {
                 for part in s.split(',').map(str::trim).filter(|p| !p.is_empty()) {
                     let found = self.sh.db().find_user(part);
-                    match found {
-                        Some(n) if n == self.unum => self.sprint(&format!("|U1[> {part}: Can't send mail to yourself!"))?,
-                        Some(n) if to.iter().any(|t| t.0 == n) => self.sprint(&format!("|U1[> {part}: Can't send more than once."))?,
-                        Some(n) if to.len() < 20 => to.push((n, self.sh.db().users[n - 1].name.clone())),
-                        Some(_) => {}
-                        None => self.sprint(&format!("|U1[> {part}: No such user."))?,
+                    let Some(n) = found else {
+                        self.sprint(&format!("|U1[> {part}: No such user."))?;
+                        continue;
+                    };
+                    self.sprompt(&format!("|U1[> {part}: "))?;
+                    match self.mail_dest(n)? {
+                        Some(n) if to.iter().any(|t| t.0 == n) => self.sprint("|U1Can't send more than once.")?,
+                        Some(n) if to.len() < 20 => {
+                            let name = self.sh.db().users[n - 1].name.clone();
+                            self.sprint(&format!("|U1{name} #{n}"))?;
+                            to.push((n, name));
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -947,5 +1044,7 @@ mod tests {
         assert_eq!(super::quote_prefix("joe bloggs smith"), " JB> ");
         assert_eq!(super::re("Re: x"), "Re: x");
         assert_eq!(super::re("x"), "Re: x");
+        assert_eq!(super::filter("|12hi\x1b[0m \u{e9}"), "hi*[0m *");
+        assert!(!super::over(99, 0) && super::over(3, 3) && !super::over(2, 3));
     }
 }

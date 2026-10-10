@@ -923,7 +923,7 @@ impl Session {
         let mut v = self.sh.db().files(&fb.file)?;
         let Some(i) = v.iter().position(|f| f.name.eq_ignore_ascii_case(&name)) else { return self.sprint("|U1File not found.") };
         let f = v[i].clone();
-        if f.owner_num != self.unum && !self.is_sysop() {
+        if f.owner_num != self.unum && !self.fso() {
             return self.sprint("|12You can't remove that file - you didn't upload it.");
         }
         if !self.pynq(&format!("|U1Remove |U3{}|U1? ", f.name), false)? {
@@ -931,7 +931,7 @@ impl Session {
         }
         v.remove(i);
         self.sh.db().put_files(&fb.file, &v)?;
-        if self.is_sysop() && self.pynq("|U1Delete the file from disk too? ", false)? {
+        if self.fso() && self.pynq("|U1Delete the file from disk too? ", false)? {
             let _ = std::fs::remove_file(file_path(&fb, &f.name));
         }
         // the uploader loses the credit

@@ -420,6 +420,14 @@ impl Session {
 
     /// `OC`: page a SysOp who's on another node into a private forum.
     pub fn chat(&mut self, _data: &str) -> io::Result<()> {
+        let max = self.cfg().max_chat_pages;
+        if max > 0 && self.chat_pages >= max {
+            if !self.printf("goaway")? {
+                self.sprint("|NL|U1You've paged the SysOp enough for one call.")?;
+            }
+            self.log(&format!("Tried chatting more than {max} times"));
+            return self.send_email("1");
+        }
         let sysops: Vec<usize> = {
             let db = self.sh.db();
             let users = &db.users;
@@ -440,6 +448,7 @@ impl Session {
         }
         self.sprompt("|NL|U1Reason for chat: |U3")?;
         let why = self.input(60)?;
+        self.chat_pages += 1;
         let forum = 10 + self.node as u8;
         for n in sysops {
             self.send_node(
