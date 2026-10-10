@@ -51,9 +51,7 @@ fn main() {
         let r = if cmd == "init" {
             setup::init(std::path::Path::new(args.get(2).map_or(".", |s| s.as_str())))
         } else {
-            config::load(args.get(2).map_or("impulse.toml", |s| s.as_str()))
-                .map_err(|e| std::io::Error::other(e.to_string()))
-                .and_then(|c| setup::clean(std::path::Path::new(&c.data_path)))
+            db::open(args.get(2).map_or("impulse.toml", |s| s.as_str())).map_err(std::io::Error::other).and_then(|(_, mut db)| setup::clean(&mut db))
         };
         match r {
             Ok(s) => println!("{s}"),
@@ -65,12 +63,8 @@ fn main() {
         return;
     }
     let path = args.get(1).cloned().unwrap_or_else(|| "impulse.toml".into());
-    let cfg = config::load(&path).unwrap_or_else(|e| {
+    let (cfg, mut db) = db::open(&path).unwrap_or_else(|e| {
         eprintln!("{e}");
-        process::exit(1);
-    });
-    let mut db = db::Db::open(&cfg.data_path).unwrap_or_else(|e| {
-        eprintln!("Unable to open data in {}: {e}", cfg.data_path.display());
         process::exit(1);
     });
     db.back_logs = cfg.back_sysop_logs; // ponytail: read at startup only

@@ -36,12 +36,13 @@ impl Shared {
         self.cfg.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
-    /// Apply an edit to the configuration and write it back to disk.
+    /// Apply an edit to the configuration and write it back.
     pub fn edit_cfg(&self, f: impl FnOnce(&mut Config)) -> io::Result<()> {
+        let db = self.db(); // first, as everywhere: db then cfg
         let mut g = self.cfg.write().unwrap_or_else(|e| e.into_inner());
         let mut c = (**g).clone();
         f(&mut c);
-        c.save(&self.cfg_path)?;
+        db.save_config(&c, &self.cfg_path)?;
         *g = Arc::new(c);
         Ok(())
     }

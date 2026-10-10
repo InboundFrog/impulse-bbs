@@ -113,6 +113,17 @@ Default menus `MAIN`, `MSG`, `FILE` and `SYSOP` reach every command.
 - **Logs:** `data/sysop.log` rotates daily into `sysop1.log`… with the day's
   totals, keeping `back_sysop_logs` days. `screen_pause = false` turns
   pauses off for everyone.
+- **PostgreSQL:** set `IMPULSE_DATABASE_URL` (e.g.
+  `postgres://impulse:impulse@localhost:5432/impulse`) and the config,
+  users, system state, message and file bases, line files and the SysOp log
+  live in PostgreSQL instead of `data_path`. `docker compose up -d` runs one
+  locally (`compose.yaml`). The first start copies the config file in; after
+  that the database copy is used and SysOp edits save there. Documents are
+  in table `kv` (`name`, `body` as text, so `body::jsonb` queries work),
+  the log in `log`, rows older than `back_sysop_logs` days are deleted.
+  Uploads, traps, ISL files and QWK packets stay on disk under `data_path`.
+  `import` and `clean` use the database too. Existing `data/*.json` is not
+  migrated: import or start fresh.
 - **Importing a 7.1 system:** `impulse import <dir with USER.LST etc.> [config]`
   into a fresh `data_path`. Users (numbers, stats, flags, colours), message
   and file bases and `*.DIR` file lists come across; the config is backed up
@@ -159,8 +170,11 @@ impulse.toml   configuration
 menus/         *.MNU menus (MAIN, MSG, FILE, SYSOP)
 text/          display files (WELCOME, LOGON, LOGOFF); add your own .ANS/.ASC
 data/          created at runtime: users.json, system.json, msgs/, files/, sysop.log
+compose.yaml   local services (PostgreSQL)
 ```
 
 Tests: `cargo test` covers the ACS evaluator, colours and telnet escaping,
 the legacy menu, passwords, wildcards, door macros, ISL, events, QWK,
 the editor buffer and the binary import layouts.
+`IMPULSE_TEST_DATABASE_URL=postgres://... cargo test` also runs the
+PostgreSQL store test (it writes `test/*` rows and `test ...` log lines).

@@ -143,7 +143,7 @@ pub fn run(sh: &Shared, line: &str) -> Option<String> {
         },
         "L" => {
             let n = if node == usize::MAX { 20 } else { node };
-            let text = std::fs::read_to_string(db.path("sysop.log")).unwrap_or_default();
+            let text = db.log_text();
             let lines: Vec<&str> = text.lines().collect();
             lines[lines.len().saturating_sub(n)..].join("\n")
         }

@@ -363,8 +363,7 @@ fn records(b: &[u8], len: usize) -> impl Iterator<Item = &[u8]> {
 
 pub fn run(dir: &Path, cfg_path: &str) -> Result<String, String> {
     let read = |name: &str| find_ci(dir, name).and_then(|p| std::fs::read(p).ok());
-    let mut cfg: Config = crate::config::load(cfg_path)?;
-    let db = Db::open(&cfg.data_path).map_err(|e| e.to_string())?;
+    let (mut cfg, db): (Config, Db) = crate::db::open(cfg_path)?;
     if !db.users.is_empty() {
         return Err(format!("{} already has users; import into a fresh data directory.", cfg.data_path.display()));
     }
@@ -436,7 +435,7 @@ pub fn run(dir: &Path, cfg_path: &str) -> Result<String, String> {
         return Err(format!("No USER.LST, BOARDS.DAT or UPLOADS.DAT in {}", dir.display()));
     }
     let _ = std::fs::copy(cfg_path, format!("{cfg_path}.bak"));
-    cfg.save(cfg_path).map_err(|e| e.to_string())?;
+    db.save_config(&cfg, cfg_path).map_err(|e| e.to_string())?;
     db.save().map_err(|e| e.to_string())?;
     Ok(format!("Imported {}. {cfg_path} was backed up to {cfg_path}.bak; check the file paths, which came from DOS.", out.join(", ")))
 }

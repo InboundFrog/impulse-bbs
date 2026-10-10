@@ -1,5 +1,6 @@
 //! Persistent data: users (USER.LST), system state (STATUS.DAT counters,
-//! LASTON.DAT) and message bases. Stored as JSON under `data_path`.
+//! LASTON.DAT) and message bases. Stored as JSON under `data_path`, or in
+//! PostgreSQL when `IMPULSE_DATABASE_URL` is set.
 
 use argon2::Argon2;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng};
@@ -265,6 +266,9 @@ pub struct Online {
 
 pub struct Db {
     dir: PathBuf,
+    /// Set: documents, line files and the SysOp log live in PostgreSQL;
+    /// uploads, traps and script files stay under `dir`.
+    pg: Option<Pg>,
     /// User number N is `users[N - 1]`, as in USER.LST.
     pub users: Vec<User>,
     pub sys: SysState,
@@ -273,31 +277,129 @@ pub struct Db {
     pub back_logs: u32,
 }
 
-fn load<T: DeserializeOwned + Default>(p: &Path) -> io::Result<T> {
-    match fs::read(p) {
-        Ok(b) => Ok(serde_json::from_slice(&b)?),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(T::default()),
-        Err(e) => Err(e),
+/// A PostgreSQL connection, reopened if the server drops it.
+pub struct Pg {
+    url: String,
+    client: std::sync::Mutex<postgres::Client>,
+}
+
+const SCHEMA: &str = "create table if not exists kv (name text primary key, body text not null);
+create table if not exists log (id bigserial primary key, at timestamptz not null default now(), line text not null);
+create index if not exists log_at on log (at);";
+
+impl Pg {
+    pub fn connect(url: &str) -> io::Result<Pg> {
+        let mut c = postgres::Client::connect(url, postgres::NoTls).map_err(io::Error::other)?;
+        c.batch_execute(SCHEMA).map_err(io::Error::other)?;
+        Ok(Pg { url: url.into(), client: c.into() })
+    }
+
+    // ponytail: no TLS, add postgres-native-tls when the server isn't local
+    fn run<T>(&self, f: impl Fn(&mut postgres::Client) -> Result<T, postgres::Error>) -> io::Result<T> {
+        let mut c = self.client.lock().unwrap_or_else(|e| e.into_inner());
+        if c.is_closed() {
+            *c = postgres::Client::connect(&self.url, postgres::NoTls).map_err(io::Error::other)?;
+        }
+        f(&mut c).map_err(io::Error::other)
+    }
+
+    pub fn read(&self, name: &str) -> io::Result<Option<String>> {
+        self.run(|c| c.query_opt("select body from kv where name = $1", &[&name]).map(|r| r.map(|r| r.get(0))))
+    }
+
+    pub fn write(&self, name: &str, body: &str) -> io::Result<()> {
+        self.run(|c| c.execute("insert into kv (name, body) values ($1, $2) on conflict (name) do update set body = excluded.body", &[&name, &body])).map(drop)
     }
 }
 
-/// Write via a temp file + rename so a crash never leaves a half-written file.
-fn store<T: Serialize + ?Sized>(p: &Path, v: &T) -> io::Result<()> {
-    let tmp = p.with_extension("tmp");
-    fs::write(&tmp, serde_json::to_vec_pretty(v)?)?;
-    fs::rename(tmp, p)
+/// Open the configuration and data. With `IMPULSE_DATABASE_URL` set, both
+/// come from PostgreSQL; the first run copies the config file in.
+pub fn open(cfg_path: &str) -> Result<(crate::config::Config, Db), String> {
+    let Ok(url) = std::env::var("IMPULSE_DATABASE_URL") else {
+        let cfg = crate::config::load(cfg_path)?;
+        let db = Db::open(&cfg.data_path).map_err(|e| format!("Unable to open data in {}: {e}", cfg.data_path.display()))?;
+        return Ok((cfg, db));
+    };
+    let pg = Pg::connect(&url).map_err(|e| format!("Unable to connect to PostgreSQL: {e}"))?;
+    let cfg = match pg.read(CONFIG).map_err(|e| e.to_string())? {
+        Some(s) => toml::from_str(&s).map_err(|e| format!("{CONFIG} in PostgreSQL: {e}"))?,
+        None => {
+            let c = crate::config::load(cfg_path)?;
+            pg.write(CONFIG, &toml::to_string_pretty(&c).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+            c
+        }
+    };
+    let mut db = Db { dir: cfg.data_path.clone(), pg: Some(pg), users: vec![], sys: Default::default(), online: BTreeMap::new(), back_logs: 0 };
+    fs::create_dir_all(&db.dir).map_err(|e| e.to_string())?;
+    db.users = db.load(USERS).map_err(|e| e.to_string())?;
+    db.sys = db.load(SYSTEM).map_err(|e| e.to_string())?;
+    Ok((cfg, db))
 }
+
+const CONFIG: &str = "impulse.toml";
+const USERS: &str = "users.json";
+const SYSTEM: &str = "system.json";
 
 impl Db {
     pub fn open(dir: &Path) -> io::Result<Db> {
         fs::create_dir_all(dir.join("msgs"))?;
         fs::create_dir_all(dir.join("files"))?;
-        Ok(Db { dir: dir.to_path_buf(), users: load(&dir.join("users.json"))?, sys: load(&dir.join("system.json"))?, online: BTreeMap::new(), back_logs: 0 })
+        let mut db = Db { dir: dir.to_path_buf(), pg: None, users: vec![], sys: Default::default(), online: BTreeMap::new(), back_logs: 0 };
+        db.users = db.load(USERS)?;
+        db.sys = db.load(SYSTEM)?;
+        Ok(db)
+    }
+
+    /// A document or line file under `name`, None if missing.
+    fn read(&self, name: &str) -> io::Result<Option<String>> {
+        if let Some(pg) = &self.pg {
+            return pg.read(name);
+        }
+        match fs::read_to_string(self.dir.join(name)) {
+            Ok(s) => Ok(Some(s)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Files go via a temp file + rename so a crash never leaves a half-written one.
+    fn write(&self, name: &str, body: &str) -> io::Result<()> {
+        if let Some(pg) = &self.pg {
+            return pg.write(name, body);
+        }
+        let p = self.dir.join(name);
+        let tmp = p.with_extension("tmp");
+        fs::write(&tmp, body)?;
+        fs::rename(tmp, p)
+    }
+
+    fn load<T: DeserializeOwned + Default>(&self, name: &str) -> io::Result<T> {
+        Ok(self.read(name)?.map(|s| serde_json::from_str(&s)).transpose()?.unwrap_or_default())
+    }
+
+    fn store<T: Serialize + ?Sized>(&self, name: &str, v: &T) -> io::Result<()> {
+        self.write(name, &serde_json::to_string_pretty(v)?)
+    }
+
+    pub fn remove(&self, name: &str) -> io::Result<()> {
+        match &self.pg {
+            Some(pg) => pg.run(|c| c.execute("delete from kv where name = $1", &[&name])).map(drop),
+            None => fs::remove_file(self.dir.join(name)).or_else(|e| if e.kind() == io::ErrorKind::NotFound { Ok(()) } else { Err(e) }),
+        }
+    }
+
+    /// Write the configuration back where it came from (comments in a
+    /// hand-edited file are not kept).
+    pub fn save_config(&self, c: &crate::config::Config, path: &str) -> io::Result<()> {
+        match &self.pg {
+            Some(pg) => pg.write(CONFIG, &toml::to_string_pretty(c).map_err(io::Error::other)?),
+            None => c.save(path),
+        }
     }
 
     pub fn save(&self) -> io::Result<()> {
-        store(&self.dir.join("users.json"), &self.users)?;
-        store(&self.dir.join("system.json"), &self.sys)
+        self.store(USERS, &self.users)?;
+        self.store(SYSTEM, &self.sys)
     }
 
     /// Find a live user by number or (case-insensitive) name.
@@ -310,12 +412,12 @@ impl Db {
         self.users.get(n.checked_sub(1)?).filter(|u| !u.deleted).map(|_| n)
     }
 
-    fn msg_path(&self, file: &str) -> PathBuf {
-        self.dir.join("msgs").join(format!("{file}.json"))
+    fn msg_name(file: &str) -> String {
+        format!("msgs/{file}.json")
     }
 
     pub fn msgs(&self, file: &str) -> io::Result<Vec<Msg>> {
-        load(&self.msg_path(file))
+        self.load(&Self::msg_name(file))
     }
 
     /// Add a message, then drop the oldest non-permanent ones past `max` (0 = no limit).
@@ -324,13 +426,13 @@ impl Db {
         m.id = self.sys.next_msg_id;
         let mut v = self.msgs(file)?;
         v.push(m);
-        store(&self.msg_path(file), &v)?;
+        self.store(&Self::msg_name(file), &v)?;
         self.prune(file, max)?;
         self.save()
     }
 
     pub fn put_msgs(&self, file: &str, v: &[Msg]) -> io::Result<()> {
-        store(&self.msg_path(file), &v)
+        self.store(&Self::msg_name(file), &v)
     }
 
     /// Drop the oldest non-permanent messages beyond `max`; returns how many.
@@ -344,7 +446,7 @@ impl Db {
             };
         }
         if v.len() != n {
-            store(&self.msg_path(file), &v)?;
+            self.store(&Self::msg_name(file), &v)?;
         }
         Ok(n - v.len())
     }
@@ -354,30 +456,30 @@ impl Db {
         if let Some(m) = v.iter_mut().find(|m| m.id == id) {
             f(m);
         }
-        store(&self.msg_path(file), &v)
+        self.store(&Self::msg_name(file), &v)
     }
 
     pub fn delete_msg(&mut self, file: &str, id: u64) -> io::Result<()> {
         let mut v = self.msgs(file)?;
         v.retain(|m| m.id != id);
-        store(&self.msg_path(file), &v)
+        self.store(&Self::msg_name(file), &v)
     }
 
     pub fn files(&self, base: &str) -> io::Result<Vec<FileRec>> {
-        load(&self.dir.join("files").join(format!("{base}.json")))
+        self.load(&format!("files/{base}.json"))
     }
 
     pub fn put_files(&self, base: &str, v: &[FileRec]) -> io::Result<()> {
-        store(&self.dir.join("files").join(format!("{base}.json")), v)
+        self.store(&format!("files/{base}.json"), v)
     }
 
     /// Any JSON data file under the data directory (default if missing).
     pub fn get<T: DeserializeOwned + Default>(&self, name: &str) -> io::Result<T> {
-        load(&self.dir.join(name))
+        self.load(name)
     }
 
     pub fn put<T: Serialize + ?Sized>(&self, name: &str, v: &T) -> io::Result<()> {
-        store(&self.dir.join(name), v)
+        self.store(name, v)
     }
 
     pub fn path(&self, name: &str) -> PathBuf {
@@ -386,19 +488,28 @@ impl Db {
 
     /// Plain text line files (rumors, oneliners, auto-message).
     pub fn lines(&self, name: &str) -> Vec<String> {
-        fs::read_to_string(self.dir.join(name)).map(|s| s.lines().map(String::from).collect()).unwrap_or_default()
+        self.read(name).ok().flatten().map(|s| s.lines().map(String::from).collect()).unwrap_or_default()
     }
 
     pub fn put_lines(&self, name: &str, lines: &[String]) -> io::Result<()> {
-        let p = self.dir.join(name);
-        let tmp = p.with_extension("tmp");
-        fs::write(&tmp, lines.join("\n") + "\n")?;
-        fs::rename(tmp, p)
+        self.write(name, &(lines.join("\n") + "\n"))
     }
 
     pub fn log(&self, line: &str) {
         use std::io::Write;
         eprintln!("{line}");
+        if let Some(pg) = &self.pg {
+            // ponytail: old days are deleted, not kept as totals; the zlog history has those
+            let keep = self.back_logs as i32;
+            let _ = pg.run(|c| {
+                c.execute("insert into log (line) values ($1)", &[&line])?;
+                if keep > 0 {
+                    c.execute("delete from log where at < $1", &[&(today_start() - chrono::Duration::days(keep as i64))])?;
+                }
+                Ok(())
+            });
+            return;
+        }
         let p = self.dir.join("sysop.log");
         if self.back_logs > 0 {
             self.rotate_log(&p);
@@ -406,6 +517,15 @@ impl Db {
         if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(p) {
             let _ = writeln!(f, "{line}");
         }
+    }
+
+    /// The current SysOp log: today's when logs rotate, else all of it.
+    pub fn log_text(&self) -> String {
+        let Some(pg) = &self.pg else { return fs::read_to_string(self.dir.join("sysop.log")).unwrap_or_default() };
+        let from = (self.back_logs > 0).then(today_start);
+        pg.run(|c| c.query("select line from log where $1::timestamptz is null or at >= $1 order by id", &[&from]))
+            .map(|rows| rows.iter().map(|r| r.get::<_, String>(0) + "\n").collect())
+            .unwrap_or_default()
     }
 
     /// The first line of a new day starts a new SysOp log: the last one gets
@@ -436,6 +556,10 @@ impl Db {
         let _ = fs::rename(p, old(1));
         let _ = fs::write(p, format!("\nImpulse SysOp log for {today}\n\n"));
     }
+}
+
+fn today_start() -> chrono::DateTime<chrono::Local> {
+    chrono::Local::now().date_naive().and_hms_opt(0, 0, 0).and_then(|t| t.and_local_timezone(chrono::Local).earliest()).unwrap_or_else(chrono::Local::now)
 }
 
 pub fn hash_pw(pw: &str) -> String {
@@ -477,6 +601,28 @@ mod tests {
         db.log("again"); // same day: no rotation
         assert_eq!(read("sysop2.log"), "old");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Runs against a scratch database: IMPULSE_TEST_DATABASE_URL=postgres://... cargo test
+    #[test]
+    fn postgres_store() {
+        let Ok(url) = std::env::var("IMPULSE_TEST_DATABASE_URL") else { return };
+        let pg = super::Pg::connect(&url).unwrap();
+        pg.run(|c| c.batch_execute("delete from kv where name like 'test/%'; delete from log where line like 'test %'")).unwrap();
+        let mut db = super::Db { dir: std::env::temp_dir(), pg: Some(pg), users: vec![], sys: Default::default(), online: Default::default(), back_logs: 1 };
+        assert!(db.lines("test/rumors").is_empty());
+        db.put_lines("test/rumors", &["a".into(), "b".into()]).unwrap();
+        assert_eq!(db.lines("test/rumors"), ["a", "b"]);
+        db.put("test/x.json", &vec![1, 2]).unwrap();
+        db.put("test/x.json", &vec![3]).unwrap();
+        assert_eq!(db.get::<Vec<i32>>("test/x.json").unwrap(), [3]);
+        db.remove("test/x.json").unwrap();
+        assert!(db.get::<Vec<i32>>("test/x.json").unwrap().is_empty());
+        db.log("test one");
+        db.log("test two");
+        assert!(db.log_text().ends_with("test one\ntest two\n"));
+        db.back_logs = 0;
+        assert!(db.log_text().contains("test one\n"));
     }
 
     #[test]

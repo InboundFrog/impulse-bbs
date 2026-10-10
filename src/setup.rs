@@ -30,12 +30,11 @@ pub fn init(dir: &Path) -> io::Result<String> {
 }
 
 /// Delete every user but #1 and the new-user voting queue.
-pub fn clean(data: &Path) -> io::Result<String> {
-    let mut db = crate::db::Db::open(data)?;
+pub fn clean(db: &mut crate::db::Db) -> io::Result<String> {
     let n = db.users.len().saturating_sub(1);
     db.users.truncate(1);
     db.save()?;
-    let _ = fs::remove_file(data.join("nuv.json"));
+    db.remove("nuv.json")?;
     Ok(format!("Removed {n} user(s) and the NUV queue; user #1 kept."))
 }
 

@@ -282,7 +282,7 @@ impl Session {
 
     /// `%L`: the end of the SysOp log.
     pub fn show_log(&mut self) -> io::Result<()> {
-        let text = std::fs::read_to_string(self.sh.db().path("sysop.log")).unwrap_or_default();
+        let text = self.sh.db().log_text();
         let lines: Vec<&str> = text.lines().collect();
         self.nl()?;
         for l in &lines[lines.len().saturating_sub(200)..] {

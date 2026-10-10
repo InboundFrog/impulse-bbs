@@ -19,7 +19,9 @@ max_nodes = 8
 # rings = 1              # 2 lets caller ID (NMBR/NAME) arrive before answering
 # init_minutes = 30      # re-init after this long without a call, 0 = never
 
-data_path = "data"     # users, messages, logs (created on first run)
+data_path = "data"     # users, messages, logs (created on first run);
+                       # with IMPULSE_DATABASE_URL set those go to PostgreSQL
+                       # (and this file is read only on its first start)
 menu_path = "menus"    # *.MNU menu files (Impulse text format)
 text_path = "text"     # *.ANS / *.ASC display files
 
