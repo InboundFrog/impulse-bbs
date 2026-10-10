@@ -378,8 +378,14 @@ impl Session {
                         self.nl()?;
                     }
                 }
-                // ponytail: no disk/cursor queries or clock setting; the script just gets zeros
-                "GETDSIZE" | "GETDFREE" | "GETX" | "GETY" => s.set(&p1, "0"),
+                "GETDSIZE" | "GETDFREE" => {
+                    let (size, free) = disk(&s.cwd).unwrap_or_default();
+                    s.set(&p1, if cmd == "GETDSIZE" { size } else { free }.to_string())
+                }
+                "GETX" | "GETY" => {
+                    let (x, y) = self.cursor_pos()?.unwrap_or((0, 0));
+                    s.set(&p1, if cmd == "GETX" { x } else { y }.to_string())
+                }
                 "GETVER" => s.set(&p1, "7.1"),
                 "GETDIR" => s.set(&p1, s.cwd.display().to_string()),
                 "GETTIME" => s.set(&p1, time_str(&l2)),
@@ -470,4 +476,12 @@ mod tests {
         s.set("name", "");
         assert_eq!(s.get("NAME"), "");
     }
+}
+
+/// Size and free bytes of the filesystem holding `dir` (DiskSize/DiskFree), from df(1).
+fn disk(dir: &std::path::Path) -> Option<(u64, u64)> {
+    let out = std::process::Command::new("df").arg("-kP").arg(dir).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let f: Vec<u64> = text.lines().nth(1)?.split_whitespace().skip(1).take(3).filter_map(|n| n.parse().ok()).collect();
+    Some((*f.first()? * 1024, *f.get(2)? * 1024))
 }

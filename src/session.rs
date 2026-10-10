@@ -550,6 +550,30 @@ impl Session {
 
     // ---- input ------------------------------------------------------------
 
+    /// Ask the terminal where the cursor is (ESC[6n, for ISL's GETX/GETY);
+    /// keys typed meanwhile are kept. None if it doesn't answer within a second.
+    pub fn cursor_pos(&mut self) -> io::Result<Option<(u16, u16)>> {
+        self.t.put_str("\x1b[6n");
+        let (start, mut got, mut kept) = (Instant::now(), String::new(), Vec::new());
+        while start.elapsed() < Duration::from_secs(1) {
+            if !self.t.key_ready(Duration::from_millis(100))? {
+                continue;
+            }
+            match self.t.getkey()? {
+                '\x1b' => got = "\x1b".into(),
+                'R' if got.starts_with("\x1b[") => {
+                    self.t.stuffed.extend(kept);
+                    let (y, x) = got[2..].split_once(';').unwrap_or(("0", "0"));
+                    return Ok(Some((x.parse().unwrap_or(0), y.parse().unwrap_or(0))));
+                }
+                c if !got.is_empty() => got.push(c),
+                c => kept.push(c),
+            }
+        }
+        self.t.stuffed.extend(kept);
+        Ok(None)
+    }
+
     pub fn getkey(&mut self) -> io::Result<char> {
         self.lines = 0;
         self.t.getkey()
