@@ -2,7 +2,7 @@
 #   IMPULSE_DATABASE_URL=postgres://impulse:impulse@localhost:5432/impulse
 services:
   postgres:
-    image: postgres:17
+    image: postgres:18
     environment:
       POSTGRES_USER: impulse
       POSTGRES_PASSWORD: impulse
