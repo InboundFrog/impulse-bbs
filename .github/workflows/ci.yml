@@ -1,58 +1,40 @@
+# CI via the reusable workflows in InboundFrog/repo-tools:
+# https://github.com/InboundFrog/repo-tools (its README lists every input).
+# The `uses:` lines pin a release by commit SHA, with the tag in a comment, so
+# Dependabot proposes each newer release. Keep the final "CI OK" job: it is the
+# one check branch protection requires.
 name: CI
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: build & test
+  # cargo fmt, clippy -D warnings, build and test, plus cargo audit in its own job.
+  rust:
+    uses: InboundFrog/repo-tools/.github/workflows/rust.yml@bf24833e55abb4f21a6061c41f045efb4963181d # v0.1.0
+    with:
+      working-directory: .
+      toolchain: "1.96"
+
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [rust]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Install system deps
+      - name: Check job results
+        env:
+          NEEDS: ${{ toJSON(needs) }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libudev-dev libusb-1.0-0-dev pkg-config
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
-        with:
-          toolchain: "1.96"
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: cargo fmt
-        run: cargo fmt --all -- --check
-      - name: cargo clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
-      - name: cargo build
-        run: cargo build --all-targets --locked
-      - name: cargo test
-        run: cargo test --all-targets --locked
-
-  audit:
-    name: cargo audit
-    runs-on: ubuntu-latest
-    # audit-check reports through a check run; Dependabot PRs get a
-    # read-only token unless the job asks for more.
-    permissions:
-      contents: read
-      checks: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<<"$NEEDS"
+          jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<<"$NEEDS" >/dev/null
