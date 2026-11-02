@@ -1,21 +1,34 @@
+# Dependabot version updates, from the repo-tools sample:
+# https://github.com/InboundFrog/repo-tools/blob/main/examples/dependabot.yml
+#
+# github-actions covers the repo-tools pins in .github/workflows/ci.yml too, so
+# a new release arrives as a PR here after the cooldown. Minor and patch
+# updates share one PR per ecosystem; majors get their own.
 version: 2
 updates:
-  - package-ecosystem: cargo
-    directory: /
-    schedule:
-      interval: weekly
-
-  # Workflows pin actions to commit SHAs; this keeps them current.
   - package-ecosystem: github-actions
-    directory: /
+    directories: ['/']
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     groups:
-      actions:
+      github-actions:
         patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directories: ['/']
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      cargo-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
   # compose.yaml's postgres image.
   - package-ecosystem: docker-compose
-    directory: /
+    directories: ['/']
     schedule:
       interval: weekly
