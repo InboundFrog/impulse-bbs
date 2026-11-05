@@ -24,7 +24,7 @@ jobs:
     uses: InboundFrog/repo-tools/.github/workflows/rust.yml@11670fe8f6e9cddf7be79989e2da4ae48f399584 # v0.1.1
     with:
       working-directory: .
-      toolchain: "1.96"
+      toolchain: "1.99"
 
   ci-ok:
     name: CI OK
