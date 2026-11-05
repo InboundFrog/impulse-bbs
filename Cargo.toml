@@ -6,7 +6,7 @@ description = "A Rust re-implementation of the Impulse 7.1 BBS"
 license = "MIT"
 
 [dependencies]
-argon2 = { version = "0.5", features = ["std"] }
+argon2 = "0.6"
 chrono = "0.4"
 libc = "0.2.191"
 postgres = { version = "0.19.14", features = ["with-chrono-0_4"] }

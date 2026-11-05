@@ -3,7 +3,8 @@
 //! PostgreSQL when `IMPULSE_DATABASE_URL` is set.
 
 use argon2::Argon2;
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng};
+use argon2::password_hash::phc::PasswordHash;
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
 use std::fs;
@@ -563,8 +564,7 @@ fn today_start() -> chrono::DateTime<chrono::Local> {
 }
 
 pub fn hash_pw(pw: &str) -> String {
-    let salt = SaltString::generate(&mut OsRng);
-    Argon2::default().hash_password(pw.as_bytes(), &salt).map(|h| h.to_string()).unwrap_or_default()
+    Argon2::default().hash_password(pw.as_bytes()).map(|h| h.to_string()).unwrap_or_default()
 }
 
 /// Logon check; also tries the password in capitals, as Impulse kept them.
@@ -631,5 +631,9 @@ mod tests {
         assert!(super::check_pw(&h, "hunter2"));
         assert!(!super::check_pw(&h, "HUNTER2"));
         assert!(!super::check_pw("", ""));
+        // Hashed by argon2 0.5: hashes stored before the 0.6 upgrade still verify.
+        let old = "$argon2id$v=19$m=19456,t=2,p=1$insmFmQBT80IuwX1qxJKRg$J6SCYBDd+tIw0yT0FfyoHBB/TRRngiy0cQIe+GfMcGg";
+        assert!(super::check_pw(old, "secret"));
+        assert!(!super::check_pw(old, "Secret"));
     }
 }
